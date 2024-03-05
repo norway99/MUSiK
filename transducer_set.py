@@ -4,6 +4,7 @@ import geometry
 import utils
 from transducer import Transducer, Focused, Planewave
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 class TransducerSet:
 
@@ -179,7 +180,21 @@ class TransducerSet:
                 plt.savefig(save_path)
             else:
                 plt.show()
-                
+
+    def plot_transducers(self):
+        coords = []
+        for i in range(len(transducer_set.transducers)):
+            coords.append(transducer_set.poses[i].apply_to_points(transducer_set.transducers[i].sensor_coords))
+    
+        fig = go.Figure(data=[go.Scatter3d(x=np.concatenate(coords, axis=0)[:,0],
+                                           y=np.concatenate(coords, axis=0)[:,1],
+                                           z=np.concatenate(coords, axis=0)[:,2],
+                                           mode='markers',
+                                           marker=dict(size=1, opacity=0.8,),
+                )])
+        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+        fig.update_layout(scene_aspectmode='data')
+        fig.show()
                 
     def plot_transducer_fovs(self, ax=None, save=False, save_path=None, scale=0.1):
         if ax is None:
