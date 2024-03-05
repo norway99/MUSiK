@@ -15,7 +15,6 @@ simulation_files
 *.DS_Store
 *.mrc
 outputs
-*baby.py
 __pycache__
 .DS_Store
 k-wave-python/
