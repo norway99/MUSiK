@@ -183,8 +183,8 @@ class TransducerSet:
 
     def plot_transducers(self):
         coords = []
-        for i in range(len(transducer_set.transducers)):
-            coords.append(transducer_set.poses[i].apply_to_points(transducer_set.transducers[i].sensor_coords))
+        for i in range(len(self.transducers)):
+            coords.append(self.poses[i].apply_to_points(self.transducers[i].sensor_coords))
     
         fig = go.Figure(data=[go.Scatter3d(x=np.concatenate(coords, axis=0)[:,0],
                                            y=np.concatenate(coords, axis=0)[:,1],
