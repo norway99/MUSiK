@@ -6,7 +6,7 @@ import utils
 class Sensor: # sensor points are represented in global coordinate space for this class
 
     def __init__(self,
-                 aperture_type = "single_transducer", # single_transducer, extended, microphones 
+                 aperture_type = None, # single_transducer, extended, microphones 
                  transducer_set = None,
                  sensor_coords = None
                  ):
@@ -18,7 +18,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             if sensor_coords is None:
                 raise Exception("Please supply sensor coordinates to use a microphone-style sensor mask")
             self.sensor_coords = sensor_coords
-        else:
+        else if aperture_type is not None:
             if transducer_set is None:
                 raise Exception("Please supply a transducer set")
             all_sensor_coords = []
@@ -41,8 +41,8 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             self.element_lookup = np.stack(all_element_lookup, axis=0).flatten()
             self.sensor_coords = np.stack(all_sensor_coords, axis=1).reshape(-1,3)
             self.sensors_per_el = np.stack(sensors_per_el, axis=0).flatten()
-#        else: # transmit and receive from single transducer
-#            self.sensor_coords = None
+        else: 
+            self.sensor_coords = None
         
             
 
