@@ -18,7 +18,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             if sensor_coords is None:
                 raise Exception("Please supply sensor coordinates to use a microphone-style sensor mask")
             self.sensor_coords = sensor_coords
-        else if aperture_type is not None:
+        elif aperture_type is not None:
             if transducer_set is None:
                 raise Exception("Please supply a transducer set")
             all_sensor_coords = []
