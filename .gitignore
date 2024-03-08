@@ -19,7 +19,7 @@ outputs
 __pycache__
 .DS_Store
 k-wave-python/
-./kwave
+./kwave/
 ./test_experiment*
 *.raw
 *.mhd
