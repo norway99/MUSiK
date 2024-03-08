@@ -1,4 +1,4 @@
-import pdb
+import pdbAAAA
 
 import numpy as np
 import sys
@@ -427,7 +427,7 @@ class Planewave(Transducer):
                  kerf = 0,
                  radius = float('inf'),
                  focus_azimuth = float('inf'),
-                 focus_elevation = float('inf'),
+                 focus_elevation = 20e-3,
                  sensor_sampling_scheme = 'centroid',
                  sweep = np.pi/3,
                  ray_num = 64,

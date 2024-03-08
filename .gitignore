@@ -12,7 +12,6 @@
 *.json
 *.csv
 simulation_files
-dev
 *.DS_Store
 *.mrc
 outputs
