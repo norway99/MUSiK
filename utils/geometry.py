@@ -2,9 +2,10 @@ import numpy as np
 import scipy
 from scipy import spatial
 from scipy import ndimage
-import utils
 import matplotlib.pyplot as plt
 import copy
+
+import utils
 
 class Transform:
     def __init__(self, 

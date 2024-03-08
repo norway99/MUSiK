@@ -5,7 +5,7 @@ import geometry
 import matplotlib.pyplot as plt
 import utils
 
-#sys.path.append('./../../k-wave-python/kwave/')
+sys.path.append('../k-wave-python/kwave')
 import kwave
 import kwave.ktransducer
 from scipy.signal import hilbert

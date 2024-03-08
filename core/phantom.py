@@ -7,7 +7,7 @@ import sys
 sys.path.append('../utils')
 import utils
 import geometry
-from tissue import Tissue
+from .tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
 
 

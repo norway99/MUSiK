@@ -1,3 +1,5 @@
+import sys
+sys.path.append('../utils')
 import utils
 
 class Tissue:

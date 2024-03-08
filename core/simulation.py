@@ -9,14 +9,15 @@ from contextlib import contextmanager
 import shutil
 import glob
 
+from .tissue import Tissue
+from .phantom import Phantom
+from .transducer import Transducer, Focused, Planewave
+from .transducer_set import TransducerSet
+
 import sys
 sys.path.append('../utils')
 import utils
 import geometry
-from tissue import Tissue
-from phantom import Phantom
-from transducer import Transducer, Focused, Planewave
-from transducer_set import TransducerSet
 
 sys.path.append('../k-wave-python/kwave')
 import kwave
