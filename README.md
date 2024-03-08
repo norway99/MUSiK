@@ -4,7 +4,7 @@
 
 Clone the repository:
 ```shell
-$ git clone 
+$ git clone https://github.com/norway99/MUSiK.git 
 $ cd MUSiK
 ```
 
