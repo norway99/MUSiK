@@ -18,7 +18,6 @@ dev
 outputs
 __pycache__
 .DS_Store
-k-wave-python/
 musik/kwave
 musik/test_experiment*
 *.raw
