@@ -31,7 +31,7 @@ class Transducer:
                  sweep = np.pi/3,
                  ray_num = 64,
                  imaging_ndims = 2, # should be 2 or 3
-                 transmit_apodization = 'Tukey75',
+                 transmit_apodization = 'Tukey',
                  receive_apodization = 'Rectangular',
                  harmonic = 1,
                  bandwidth = 100,
@@ -433,7 +433,7 @@ class Planewave(Transducer):
                  ray_num = 64,
                  imaging_ndims = 2, # should be 2 or 3
                  steering_angles = None,
-                 transmit_apodization = 'Tukey75',
+                 transmit_apodization = 'Tukey',
                  receive_apodization = 'Rectangular'
                  ):    
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
