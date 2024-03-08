@@ -6,8 +6,6 @@ import utils
 import matplotlib.pyplot as plt
 import copy
 
-#my name is elder price
-
 class Transform:
     def __init__(self, 
                 rotation = (0,0,0),
