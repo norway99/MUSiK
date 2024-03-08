@@ -6,7 +6,7 @@ import utils
 import matplotlib.pyplot as plt
 import copy
 
-#hello, my name is elder price
+#hello, my name is elder price, and i would like to share with you the most 
 
 class Transform:
     def __init__(self, 
