@@ -4,6 +4,8 @@ import os
 import glob
 import matplotlib.pyplot as plt
 import tqdm
+import sys
+sys.path.insert(0, '../utils')
 
 import utils
 import geometry
@@ -42,23 +44,22 @@ class Reconstruction:
     def __len__(self):
         if self.transducer_set is None:
             return 0
-        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transducers)
+        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
     
         
-    transducers add_results(self,):
-    self.results = Results(os.path.join(self.simulation_path,'results'))
+    def add_results(self,):
+        self.results = Results(os.path.join(self.simulation_path,'results'))
 
 
 class DAS(Reconstruction):
 
     def __init__(self,
                  experiment = None):
-        ts = experiment.transducer_set
-        for transducer in ts:
+        for transducer in experiment.transducer_set.transducers:
             if not isinstance(transducer, Focused):
                 print("Warning: attempting to instantiate DAS reconstruction class but transducer set does not exclusively contain focused transducers.")
-                break                      
-            super(),__init__(experiment)
+                break
+        super().__init__(experiment)
             
         
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
@@ -116,8 +117,7 @@ class DAS(Reconstruction):
         
         
 # broken
-
-   def plot_scatter(reconstruction, scale=5000):
+    def plot_scatter(self, scale=5000):
        
         colorme = lambda x: (     [1,0,0] if x % 7 == 0 
                              else [0,1,0] if x % 7 == 1 
@@ -127,12 +127,12 @@ class DAS(Reconstruction):
                              else [0,1,1] if x % 7 == 5 
                              else [1,1,1])
         
-        time, coords, processed = reconstruction.preprocess_data()
+        time, coords, processed = self.preprocess_data()
         coords = np.stack(coords, axis=0)
         processed = np.stack(processed, axis=0)
         time = np.stack(time, axis=0)
         
-        transducer_lens = [t.get_num_rays() for t in reconstruction.transducer_set.transducers]
+        transducer_lens = [t.get_num_rays() for t in self.transducer_set.transducers]
         base_color = np.array([colorme(i) for i in range(len(transducer_lens)) for j in range(transducer_lens[i] * len(time[i]))])
         
         fig, ax = plt.subplots(1,1, figsize=(8,8))
@@ -199,7 +199,7 @@ class Compounding(Reconstruction):
                 transducer, transducer_transform = self.transducer_set[transducer_count]
                 steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
-            preprocessed_data = transducer.preprocess(self.results[index][1]), self.results[index][0], self.sim_properties)
+            preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties)
             
             transmit_position = transducer_transform.translation
             transmit_rotation = transducer_transform.rotation

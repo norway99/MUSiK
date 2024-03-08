@@ -2,6 +2,9 @@ import numpy as np
 import scipy
 import scipy.ndimage
 import os
+
+import sys
+sys.path.append('../utils')
 import utils
 import geometry
 from tissue import Tissue

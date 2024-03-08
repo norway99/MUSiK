@@ -5,7 +5,12 @@ import tempfile
 import time
 import matplotlib.ticker
 import matplotlib.pyplot as plt
+from contextlib import contextmanager
+import shutil
+import glob
 
+import sys
+sys.path.append('../utils')
 import utils
 import geometry
 from tissue import Tissue
@@ -13,17 +18,12 @@ from phantom import Phantom
 from transducer import Transducer, Focused, Planewave
 from transducer_set import TransducerSet
 
-import sys
-sys.path.append('../')
+sys.path.append('../k-wave-python/kwave')
 import kwave
 import kwave.kmedium
 import kwave.options.simulation_options
 import kwave.options.simulation_execution_options
 import kwave.kspaceFirstOrder3D
-
-from contextlib import contextmanager
-import shutil
-import glob
 
 
 @contextmanager

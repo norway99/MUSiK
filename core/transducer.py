@@ -1,7 +1,6 @@
-import pdbAAAA
-
 import numpy as np
 import sys
+sys.path.append('../utils')
 import geometry
 import matplotlib.pyplot as plt
 import utils

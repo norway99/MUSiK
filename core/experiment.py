@@ -7,6 +7,8 @@ import multiprocessing
 import functools
 import time
 import tqdm
+import sys
+sys.path.append('../utils')
 
 import utils
 import geometry
