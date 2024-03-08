@@ -18,8 +18,6 @@ from simulation import Simulation, SimProperties
 from sensor import Sensor
 
 
-
-
 class Results:
     
     def __init__(self,

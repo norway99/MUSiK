@@ -11,7 +11,6 @@ import kwave.ktransducer
 from scipy.signal import hilbert
 
 
-
 class Transducer:
     def __init__(self,
                  label = None,

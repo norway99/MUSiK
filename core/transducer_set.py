@@ -8,6 +8,7 @@ import geometry
 import utils
 from transducer import Transducer, Focused, Planewave
 
+
 class TransducerSet:
 
     def __init__(self,

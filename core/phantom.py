@@ -11,7 +11,6 @@ from tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
 
 
-
 class Phantom:
     """
     A class representing a phantom for simulating ultrasound imaging.
