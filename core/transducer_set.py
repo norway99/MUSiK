@@ -6,7 +6,7 @@ sys.path.append('../utils')
 
 import geometry
 import utils
-from transducer import Transducer, Focused, Planewave
+from .transducer import Transducer, Focused, Planewave
 
 
 class TransducerSet:

@@ -9,11 +9,11 @@ sys.path.insert(0, '../utils')
 
 import utils
 import geometry
-from phantom import Phantom
-from transducer_set import TransducerSet
-from simulation import Simulation, SimProperties
-from sensor import Sensor
-from experiment import Experiment
+from .phantom import Phantom
+from .transducer_set import TransducerSet
+from .simulation import Simulation, SimProperties
+from .sensor import Sensor
+from .experiment import Experiment
 
 
 class Reconstruction:
@@ -153,11 +153,10 @@ class Compounding(Reconstruction):
 
     def __init__(self,
                  experiment = None):
-        ts = experiment.transducer_set
-    for transducer in ts:
-        if not isinstance(tranducer, Planewave):
-            print("Warning: attempting to instantiate Compounding reconstruction class but transducer set does not exclusively contain plane-wave tranducers.")
-            break
+        for transducer in experiment.transducer_set.transducers:
+            if not isinstance(tranducer, Planewave):
+                print("Warning: attempting to instantiate Compounding reconstruction class but transducer set does not exclusively contain plane-wave tranducers.")
+                break
         super().__init__(experiment)
 
     def __get_element_centroids(self): # in global coordinates

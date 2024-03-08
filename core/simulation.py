@@ -19,7 +19,7 @@ sys.path.append('../utils')
 import utils
 import geometry
 
-sys.path.append('../k-wave-python/kwave')
+sys.path.append('../k-wave-python')
 import kwave
 import kwave.kmedium
 import kwave.options.simulation_options

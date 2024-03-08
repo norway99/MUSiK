@@ -12,10 +12,10 @@ sys.path.append('../utils')
 
 import utils
 import geometry
-from phantom import Phantom
-from transducer_set import TransducerSet
-from simulation import Simulation, SimProperties
-from sensor import Sensor
+from .phantom import Phantom
+from .transducer_set import TransducerSet
+from .simulation import Simulation, SimProperties
+from .sensor import Sensor
 
 
 class Results:

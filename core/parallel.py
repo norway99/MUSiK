@@ -1,6 +1,6 @@
 import sys
 import argparse
-from experiment import Experiment
+from .experiment import Experiment
 
 
 def main():
