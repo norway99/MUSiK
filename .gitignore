@@ -12,6 +12,7 @@
 *.json
 *.csv
 simulation_files
+baby.py
 *.DS_Store
 *.mrc
 outputs
