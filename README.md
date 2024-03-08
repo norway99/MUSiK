@@ -12,16 +12,31 @@ $ git branch -b dev
 $ git remote add private git@github.com:norway99/musik_dev_private.git
 $ git push -u private dev
 ```
-Now whenever you are on branch dev (```shell $ git checkout dev```) you will automatically push to and pull from the private remote.
+Now whenever you are on branch dev you will automatically push to and pull from the private remote.
 
-Find out what branch you're on by running ```shell $ git branch```.
-
-To add/update single files from master while on branch dev, run ```shell $ git checkout master <filename>```. Can also be run in reverse (grab single files from dev while on branch master). Bear in mind that these changes still need to be committed/pushed.
-
-To upload all changes from branch dev to master:
+Switch branches:
 
 ```shell
-$ git checkout master
+$ git checkout <branch> [OR]
+$ git switch <branch>
+```
+
+Find the list of branches and see which one you're on:
+
+```shell
+$ git branch```
+
+Add/update single files from main while on branch dev:
+
+```shell
+$ git checkout main <filename>```
+
+Can also be run in reverse (grab single files from dev while on branch main). Bear in mind that these changes still need to be committed/pushed.
+
+Upload all changes from branch dev to main:
+
+```shell
+$ git checkout main
 $ git merge dev
 ```
 
