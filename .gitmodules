@@ -1,0 +1,3 @@
+[submodule "k-wave-python"]
+	path = k-wave-python
+	url = git@github.com:waltsims/k-wave-python.git
