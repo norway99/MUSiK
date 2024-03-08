@@ -1,1 +1,0 @@
-the details is in the plan
