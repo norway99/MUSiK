@@ -12,8 +12,3 @@ Install packages into a python environment:
 ```shell
 $ pip install -r requirements.txt
 ```
-
-Install k-wave-python: 
-```shell
-$ git clone https://github.com/waltsims/k-wave-python.git ./
-```
