@@ -1,9 +1,7 @@
 import numpy as np
 import sys
-sys.path.append('../utils')
 import geometry
 import utils
-
 
 class Sensor: # sensor points are represented in global coordinate space for this class
 

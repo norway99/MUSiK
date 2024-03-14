@@ -250,6 +250,7 @@ class Experiment:
     def add_results(self,):
         self.results = Results(os.path.join(self.simulation_path,'results'))
         
+        
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
         simulation = Simulation(self.sim_properties, self.phantom, self.transducer_set, self.sensor, simulation_path=self.simulation_path, index=index, gpu=self.gpu)
         simulation.plot_medium_path(index, ax=ax, save=save, save_path=save_path, cmap=cmap)
