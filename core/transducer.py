@@ -265,7 +265,7 @@ class Transducer:
     def make_notatransducer(self, kgrid, c0, s_angle, pml) -> kwave.ktransducer.NotATransducer: #  gets called immediately before sim is run
         element_width, kerf, azimuth, elevation = self.__discretize(kgrid)
         
-        position = [1, ((kgrid.Ny + pml[1] - azimuth - 1))/2, ((kgrid.Nz + pml[2] - elevation - 1))/2] 
+        position = [1, ((kgrid.Ny + pml[1] - azimuth - 1))/2, ((kgrid.Nz + pml[2] - elevation - 1))/2]
         # position in terms of transducer-centric coordinates is always 0 0 0, this is the corner of the transducer
                     
         my_transducer = kwave.ktransducer.kWaveTransducerSimple(

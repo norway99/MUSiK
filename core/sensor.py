@@ -1,7 +1,9 @@
 import numpy as np
 import sys
-import geometry
+sys.path.append('../')
+
 import utils
+import geometry
 
 class Sensor: # sensor points are represented in global coordinate space for this class
 
@@ -81,7 +83,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         
         
     # takes in a list of sensor coords (global coordinate system), transforms to match reference of transmit transducer, and discretizes
-    def make_sensor_mask(self, not_transducer, phantom, transmit_transform = None):
+    def make_sensor_mask(self, not_transducer, phantom, computational_grid_shape, transmit_transform = None):
         #if self.sensor_coords is None:
         if self.aperture_type == "single_transducer":
             sensor_mask = not_transducer.indexed_mask
@@ -91,21 +93,22 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             sensor_mask = np.zeros(not_transducer.indexed_mask.shape)
             if transmit_transform is None:
                 raise Exception("Please supply a transmit transducer affine transformation")
-            transformed_sensor_coords = transmit_transform.apply_to_points(self.sensor_coords)
-            transformed_sensor_coords = np.divide(transformed_sensor_coords, phantom.voxel_dims)    
+            transformed_sensor_coords = transmit_transform.apply_to_points(self.sensor_coords, inverse=True)
+            transformed_sensor_coords = np.divide(transformed_sensor_coords, phantom.voxel_dims)
             
-            mask_centroid = np.array(sensor_mask.shape)/2
+            mask_centroid = np.array(computational_grid_shape)/2
+            mask_centroid[0] = 0
             recenter_matrix = np.broadcast_to(mask_centroid, transformed_sensor_coords.shape)
             transformed_sensor_coords = transformed_sensor_coords + recenter_matrix
             discretized_sensor_coords = np.ndarray.astype(np.round(transformed_sensor_coords), int)
 
             for coord in discretized_sensor_coords:
-                if np.prod(np.where(coord > 0, 1, 0)) == 0: 
+                if np.prod(np.where(coord >= 0, 1, 0)) == 0: 
                     continue
                 if np.prod(np.where(coord < sensor_mask.shape, 1, 0)) == 0:
                     continue
                 sensor_mask[coord[0], coord[1], coord[2]] = 1
-                            
+            print(np.sum(sensor_mask))
         return sensor_mask, discretized_sensor_coords
 
 

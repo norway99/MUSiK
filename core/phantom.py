@@ -44,7 +44,7 @@ class Phantom:
 
     def __init__(self, 
                  source_path = None,
-                 voxel_dims = (0.1e-3,0.1e-3,0.1e-3),
+                 voxel_dims = (1e-3,1e-3,1e-3),
                  matrix_dims = (256,256,256),
                  baseline = (1500, 1000),
                  seed = 5678,

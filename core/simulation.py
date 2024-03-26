@@ -217,7 +217,7 @@ class Simulation:
         medium.sound_speed = sound_speed_map
         medium.density = density_map
         
-        sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(not_transducer, self.phantom, affine)
+        sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(not_transducer, self.phantom, self.sim_properties.grid_size, affine)
             
         return (medium, kgrid, not_transducer, sensor_mask, pml_size_points, discretized_sensor_coords, sim_transducer, sim_sensor)
         

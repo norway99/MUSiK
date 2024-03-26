@@ -5,7 +5,7 @@ import glob
 import matplotlib.pyplot as plt
 import tqdm
 import sys
-sys.path.insert(0, '../utils')
+sys.path.append('../utils')
 
 import utils
 import geometry
