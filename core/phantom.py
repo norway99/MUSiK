@@ -27,7 +27,7 @@ class Phantom:
     Methods:
     - save(filepath): Saves the phantom to the specified file path.
     - load(source_path): Loads the phantom from the specified source directory.
-    - create_from_image(): Sets the phantom mask and estimates the tissues from a Hounsfield unit-scaled image.
+    - create_from_image(): Sets the phantom mask and estimates the tissues from an unscaled image.
     - create_from_list(): Sets the phantom mask and reads the tissues by supplying a list of shapes and corresponding tissues.
     - add_tissue(tissue): Adds a tissue to the phantom.
     - remove_tissue(tissue): Removes a tissue from the phantom.
