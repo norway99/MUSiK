@@ -121,12 +121,43 @@ class Phantom:
         return self.tissues
 	
  
-	# set mask and estimate tissues from a houndsfield unit-scaled image
-    def create_from_image(self, image, input_voxel_size, target_voxel_size=None, transfer_fn=None):
+	# set mask and estimate tissues from an image; assume unscaled by default
+    def create_from_image(self, input_voxel_size, image=None, image_path=None, rescale=True, rescale_slope=1, rescale_intercept=-1024, target_voxel_size=None, transfer_fn=None):
+
+
+        if image is None and image_path is None:
+            assert("Please supply an image or path in order to create a phantom using this method.")
+        elif image is not None:
+            if type(image) == np.ndarray:
+                data = image
+            else:
+                assert("To use an image as an argument it must be a numpy ndarray.")
+        else:
+            if not os.path.exists(image_path):
+                assert("Image file not found.")
+            else:
+                import Image
+                im = Image.open(image_path)
+                im_grey = im.convert('L') # make greyscale just to be safe
+                data = np.array(im_grey)
+
+        if rescale == True:
+            rescale_fn = lambda h: (h*rescale_slope + rescale_intercept)
+            data = rescale_fn(data)
+
         if target_voxel_size is None:
-            target_voxel_size = self.voxel_dims
-        if transfer_fn is None:
-            transfer_fn = lambda x: (x + np.amin(x)) / (np.amax(x) - np.amin(x))
+            target_voxel_size = self.voxel_dims # we need to downsample; much larger voxels
+
+        if transfer_fn is None or transfer_fn == "bazalova": 
+            transfer_fn = lambda h: ((h < -365) * (h * 1.0527e-3 + 1.0491) +
+                                     (h >= -365 and h < 255) * (h * 8.921e-3 + 1.0053) +
+                                     (h >= 255) * (h * 6.813e-4 + 1.0610))
+        elif transfer_fn == "gleisner":
+            transfer_fn = lambda h: ((h < 148) * (h * 9.836e-4 + 1.0168) +
+                                     (h >= 148) * (h * 2.216e-4 + 1.1786))
+        else: # vanderstraeten
+            transfer_fn = lambda h: ((h < 104) * (h * 0.0010 + 1.0050) +
+                                     (h >= 104) * (h * 0.0006 + 1.0152))
             
         # if not os.path.exists(image_path):
         #     print('image file not found')
@@ -141,10 +172,8 @@ class Phantom:
         #     print('wants image file of either .mhd, .nii, or .nii.gz format')
         #     return 0
         
-        if type(image) == np.ndarray:
-            data = image
         
-        # data = transfer_fn(data)
+        data = transfer_fn(data)
 
         x = np.arange(0, data.shape[0])
         y = np.arange(0, data.shape[1])
