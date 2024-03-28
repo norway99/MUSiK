@@ -137,7 +137,7 @@ class Simulation:
     def __run_by_index(self, index, dry=False):
         if not dry:
             start_time = time.time()
-            # print(f'running simulation index:       {index:11d}')
+            print('running simulation index:       {index:11d}')
             signals, time_array = self.__run_simulation(self.prepped_simulation)
             self.__write_signal(index, signals, time_array)
             print('simulation {:6d} completed in {:5.2f} seconds'.format(index, round(time.time() - start_time, 3)))
@@ -245,6 +245,8 @@ class Simulation:
                 input_filename=input_file_full_path,
                 save_to_disk_exit=False
             )
+
+            print('Now calling musik dependency kspaceFirstOrder3D')
 
             sensor_data = kwave.kspaceFirstOrder3D.kspaceFirstOrder3D(
                 medium=medium,
