@@ -52,19 +52,22 @@ class SimProperties:
                  alpha_coeff = 0.75, 	                # [dB/(MHz^y cm)]
                  alpha_power = 1.5,
     ):
-        self.grid_size   = grid_size
-        self.voxel_size  = voxel_size
+        self.grid_size   = np.array(grid_size)
+        self.voxel_size  = np.array(voxel_size)
         self.PML_size    = PML_size
         self.PML_alpha   = PML_alpha
         self.t_end       = t_end
         self.bona        = bona
         self.alpha_coeff = alpha_coeff
         self.alpha_power = alpha_power
-        self.matrix_size = self.calc_matrix_size(grid_size, voxel_size)
+        self.matrix_size = self.calc_matrix_size(self.grid_size, self.voxel_size)
+        self.bounds      = self.calc_bounding_vertices(self.matrix_size, PML_size, self.voxel_size)
+    
     
     def save(self, filepath):
         utils.dict_to_json(self.__dict__, filepath)
 	
+ 
     @classmethod
     def load(cls, filepath):
         dictionary = utils.json_to_dict(filepath)
@@ -72,6 +75,12 @@ class SimProperties:
         for key in dictionary.keys():
             simprops.__setattr__(key, dictionary[key])
         return simprops
+    
+    
+    def optimize_voxel_size(self, frequency):
+        # refer to k-wave documentation and manual for the precise calculation of voxel size, dependent on the timestep and the pulse frequency
+        return NotImplemented
+    
     
     def largest_prime_factor(self, n): 
         largest_prime = -1
@@ -85,19 +94,41 @@ class SimProperties:
             largest_prime = n 
         return largest_prime 
 
+
     # Computation in kwave utilizes a fourier-space calculation, therefore computational grid sizes require small prime factorizations to be efficient
     def calc_matrix_size(self, grid_size, voxel_size):
         matrix_size = []
-        raw_matrix_size = np.array(grid_size) / np.array(voxel_size)
+        raw_matrix_size = grid_size / voxel_size
         for dim in range(3):
             lpfs = []
             for i in range(int(raw_matrix_size[dim]), int(raw_matrix_size[dim] * 1.5)):
                 lpfs.append(self.largest_prime_factor(i))
-            matrix_size.append(raw_matrix_size[dim] + np.argmin(lpfs))
+            matrix_size.append(int(raw_matrix_size[dim]) + np.argmin(lpfs))
+        matrix_size = np.array(matrix_size)
         return matrix_size
     
-    def compute_vertex_transforms(self,):
-        return 0
+    
+    def calc_bounding_vertices(self, matrix_size, PML_size, voxel_dims):
+        new_grid_size = (np.array(matrix_size) - np.array(PML_size)) * np.array(voxel_dims)
+        
+        centroid = (0, new_grid_size[1]/2, new_grid_size[2]/2)
+        
+        vertices = np.array([
+                (0, 0, 0),
+                (0, 0, new_grid_size[2]),
+                (0, new_grid_size[1], 0),
+                (0, new_grid_size[1], new_grid_size[2]),
+                (new_grid_size[0], 0, 0),
+                (new_grid_size[0], 0, new_grid_size[2]),
+                (new_grid_size[0], new_grid_size[1], 0),
+                (new_grid_size[0], new_grid_size[1], new_grid_size[2])
+            ]) - np.array(centroid)
+        return vertices
+    
+    
+    def calc_hypotenuse(self, bounds):
+        return np.linalg.norm(np.stack((bounds[0], bounds[-1])))
+    
 
 
 class Simulation:
