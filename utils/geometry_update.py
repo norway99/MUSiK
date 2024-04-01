@@ -117,21 +117,42 @@ class Transform:
                     
         return tarray, center
     
+    def padtocube(self, array, value = (0)):
+        shape = array.shape[-3:]
+        max_dim = max(shape)
+        left_pad1 = (max_dim - shape[0]) // 2
+        right_pad1 = max_dim - shape[0] -  left_pad1
+        left_pad2 = (max_dim - shape[1]) // 2
+        right_pad2 = max_dim - shape[1] -  left_pad2
+        left_pad3 = (max_dim - shape[2]) // 2
+        right_pad3 = max_dim - shape[2] -  left_pad3
+        if len(array.shape) > 3:
+            if len(array.shape) > 4:
+                print("why does the array have more than four dimensions?")
+            parray = []
+            for i in range(array.shape[0]):
+                parray.append(np.pad(array[i], ((left_pad1, right_pad1), (left_pad2, right_pad2), (left_pad3, right_pad3)), mode='edge'))
+            parray = np.stack(parray, axis=0)
+        else:
+            parray = np.pad(array, ((left_pad1, right_pad1), (left_pad2, right_pad2), (left_pad3, right_pad3)), mode='edge')
+        return parray
+    
     
     # for applying to an image matrix in 3D or a multichannel image matrix in 3D + 1D
     def rotate_array(self, array, padwith=(0), inverse=False, order=0):
+        padded_array = self.padtocube(array, value=padwith)
         transform = self.__get_matrix(inverse=inverse)
 
-        center = np.array(array.shape[-3:])/2
+        center = np.array(padded_array.shape[-3:])/2
         offset = center - self.rotation.apply(center, inverse=True)
         
-        if len(array.shape) > 3:
+        if len(padded_array.shape) > 3:
             tarray = []
-            for i in range(array.shape[0]):
-                tarray.append(scipy.ndimage.affine_transform(array[i], transform[:-1,:-1].T, order=order, mode='constant', cval=padwith[i], offset=offset))
+            for i in range(padded_array.shape[0]):
+                tarray.append(scipy.ndimage.affine_transform(padded_array[i], transform[:-1,:-1].T, order=order, mode='constant', cval=padwith[i], offset=offset))
             tarray = np.stack(tarray, axis=0)
         else:
-            tarray = scipy.ndimage.affine_transform(array, transform[:-1,:-1], order=order, mode='constant', cval=padwith[0], offset=offset)
+            tarray = scipy.ndimage.affine_transform(padded_array, transform[:-1,:-1], order=order, mode='constant', cval=padwith[0], offset=offset)
             
         return tarray
     

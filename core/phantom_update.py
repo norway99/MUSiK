@@ -274,15 +274,29 @@ class Phantom:
         # keep a running log of discretization bias
         bias = np.array([0,0,0], dtype=np.float32)
         # compute the transformed bounds
+        # print(f'bounds: {bounds}')
+        # pretransform_crop_bounds_coords = np.array([(np.min(bounds[:,0]), np.max(bounds[:,0])), # can be removed
+        #                                     (np.min(bounds[:,1]), np.max(bounds[:,1])),
+        #                                     (np.min(bounds[:,2]), np.max(bounds[:,2]))])
+        # print(f'pretransform_bounds_coords: {pretransform_crop_bounds_coords}')
+        
         transformed_bounds = transform.apply_to_points(bounds, inverse=True)
+        # print(f'transformed_bounds: {transformed_bounds}')
+        
+        
         # compute bounding box in global coords that contains the bounds
         first_crop_bounds_coords = np.array([(np.min(transformed_bounds[:,0]), np.max(transformed_bounds[:,0])),
                                             (np.min(transformed_bounds[:,1]), np.max(transformed_bounds[:,1])),
-                                            (np.min(transformed_bounds[:,2]), np.max(transformed_bounds[:,2]))])      
+                                            (np.min(transformed_bounds[:,2]), np.max(transformed_bounds[:,2]))])
+        
+        # print(f'transformed_bounds_coords: {first_crop_bounds_coords}')
         # convert bounding coords to matrix indices so as to crop, then crop (or if needed, pad)
-        first_crop_bounds_indices = (first_crop_bounds_coords / np.broadcast_to(self.voxel_dims, (2,3)).T + np.broadcast_to(self.matrix_dims, (2,3)).T/2).astype(np.int64)
+        first_crop_bounds_indices = (first_crop_bounds_coords / np.broadcast_to(self.voxel_dims, (2,3)).T + np.broadcast_to(self.matrix_dims, (2,3)).T/2)
+        first_crop_bounds_indices[:,0] = np.floor(first_crop_bounds_indices[:,0])
+        first_crop_bounds_indices[:,1] = np.ceil(first_crop_bounds_indices[:,1])
+        first_crop_bounds_indices = first_crop_bounds_indices.astype(np.int32)
         # print(f'first_crop_bounds_indices {first_crop_bounds_indices}')
-        # first_crop_bounds_indices = np.stack((first_crop_bounds_indices[:,0] - 1, first_crop_bounds_indices[:,1] + 1)).T
+        first_crop_bounds_indices = np.stack((first_crop_bounds_indices[:,0] - 1, first_crop_bounds_indices[:,1] + 1)).T
         
         bias += np.mean(first_crop_bounds_indices.astype(np.float32), axis=1) * self.voxel_dims - np.mean(first_crop_bounds_coords, axis=1)        
         cropped_matrix = self.get_complete() # retrieve the matrix to transform - This should really be mask not complete in most cases
@@ -292,6 +306,11 @@ class Phantom:
         pad_x = max(-first_crop_bounds_indices[0,0], first_crop_bounds_indices[0,1] - self.matrix_dims[0], 0)
         pad_y = max(-first_crop_bounds_indices[1,0], first_crop_bounds_indices[1,1] - self.matrix_dims[1], 0)
         pad_z = max(-first_crop_bounds_indices[2,0], first_crop_bounds_indices[2,1] - self.matrix_dims[2], 0)
+        
+        # add 1 index of extra padding:
+        # pad_x += 1
+        # pad_y += 1
+        # pad_z += 1
         
         print(f'padding: {pad_x, pad_y, pad_z}')
             
@@ -312,17 +331,19 @@ class Phantom:
                 axis=0)
 
         first_crop_bounds_indices = first_crop_bounds_indices + np.stack((np.array((pad_x, pad_y, pad_z)),np.array((pad_x, pad_y, pad_z)))).T
-        print(f'first_crop_bounds_indices {first_crop_bounds_indices}')
-        print(f'cropped_matrix {cropped_matrix.shape}')
-        print(f'min cropped_matrix {np.amin(cropped_matrix)}')
+        print(f'to pad {np.stack((np.array((pad_x, pad_y, pad_z)),np.array((pad_x, pad_y, pad_z)))).T}')
+        print(f'new first_crop_bounds_indices {first_crop_bounds_indices}')
+        print(f'initial matrix shape {cropped_matrix.shape}')
         cropped_matrix = cropped_matrix[:,  first_crop_bounds_indices[0,0]:first_crop_bounds_indices[0,1],
                                             first_crop_bounds_indices[1,0]:first_crop_bounds_indices[1,1],
                                             first_crop_bounds_indices[2,0]:first_crop_bounds_indices[2,1]]
-        print(f'cropped_matrix {cropped_matrix.shape}')
+        print(f'cropped matrix shape {cropped_matrix.shape}, pre rotation')
         
         # on the new cropped matrix, rotate by transform about the centroid
-        rotated_matrix = transform.rotate_array(cropped_matrix, padwith=self.baseline)
-        print(f'min rotated {np.amin(rotated_matrix)}')
+        # rotated_matrix = transform.rotate_array(cropped_matrix, padwith=self.baseline)
+        rotated_matrix = transform.rotate_array(cropped_matrix, padwith=(0,0))
+        print(f'rotated matrix shape {rotated_matrix.shape}')
+        
         print(f'bias pre transform {bias}')
         bias = np.matmul(transform.get(inverse=False)[:3,:3], bias).squeeze() # For some reason transforming bias not needed
         print(f'bias post transform {bias}')
@@ -331,8 +352,6 @@ class Phantom:
         # grid_size = matrix_size * voxel_size / self.voxel_dims + np.ones(3)
         grid_size = matrix_size * voxel_size / self.voxel_dims
 
-        # print(voxel_size / self.voxel_dims)
-        print(f'rotated_matrix {rotated_matrix.shape}')
         print(f'grid size {grid_size}')
         rough_crop = self.crop_matrix(rotated_matrix, grid_size)
         print(f'bias pre second crop {bias}')
@@ -344,13 +363,13 @@ class Phantom:
         sampled_matrix = self.interpolate_up(rough_crop, self.voxel_dims, voxel_size)
         bias = bias / voxel_size / matrix_size
         print(f'interpolated_shape = {sampled_matrix.shape}')
-        print(f'min interped {np.amin(sampled_matrix)}')
         
         # finally perform a final crop to the desired computational matrix_size while correcting for accumulated bias
         print(f'sampled_matrix shape {sampled_matrix.shape}')
         print(f'matrix_size shape {matrix_size}')
         print(f'bias {bias}')
-        final = self.crop_matrix(sampled_matrix, matrix_size, bias=bias)
+        # final = self.crop_matrix(sampled_matrix, matrix_size, bias=bias)
+        final = self.crop_matrix(sampled_matrix, matrix_size)
         print(final.shape)
         return final
     
