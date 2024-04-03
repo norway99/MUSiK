@@ -117,7 +117,7 @@ class Transform:
                     
         return tarray, center
     
-    def padtocube(self, array, value = (0)):
+    def padtocube(self, array):
         shape = array.shape[-3:]
         max_dim = max(shape)
         left_pad1 = (max_dim - shape[0]) // 2
@@ -139,8 +139,8 @@ class Transform:
     
     
     # for applying to an image matrix in 3D or a multichannel image matrix in 3D + 1D
-    def rotate_array(self, array, padwith=(0), inverse=False, order=0):
-        padded_array = self.padtocube(array, value=padwith)
+    def rotate_array(self, array, padwith=0, inverse=False, order=0):
+        padded_array = self.padtocube(array)
         transform = self.__get_matrix(inverse=inverse)
 
         center = np.array(padded_array.shape[-3:])/2
@@ -152,7 +152,7 @@ class Transform:
                 tarray.append(scipy.ndimage.affine_transform(padded_array[i], transform[:-1,:-1].T, order=order, mode='constant', cval=padwith[i], offset=offset))
             tarray = np.stack(tarray, axis=0)
         else:
-            tarray = scipy.ndimage.affine_transform(padded_array, transform[:-1,:-1], order=order, mode='constant', cval=padwith[0], offset=offset)
+            tarray = scipy.ndimage.affine_transform(padded_array, transform[:-1,:-1].T, order=order, mode='constant', cval=padwith, offset=offset)
             
         return tarray
     

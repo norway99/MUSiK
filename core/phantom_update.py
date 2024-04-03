@@ -48,6 +48,7 @@ class Phantom:
                  matrix_dims = (256,256,256),
                  baseline = (1500, 1000),
                  seed = 5678,
+                 from_mask=True,
                  ):
         
         # initialize from source if exists
@@ -59,10 +60,11 @@ class Phantom:
         self.seed = seed
         self.rng = np.random.default_rng(seed)
         self.voxel_dims = np.array(voxel_dims)
-        self.mask = np.zeros(matrix_dims, dtype = np.float16)
+        self.mask = np.zeros(matrix_dims, dtype = np.float32)
         self.tissues = {'water':Tissue(name = 'water', label = 0, c=1500, rho=1000, sigma=0, scale=0.1)}
         self.matrix_dims = np.array(matrix_dims)
         self.baseline = baseline
+        self.from_mask = from_mask
         self.complete = None
         
         
@@ -177,6 +179,7 @@ class Phantom:
         
     # add tissue
     def add_tissue(self, tissue):
+        self.from_mask = True
         self.tissues[tissue.name] = tissue
         
         
@@ -222,24 +225,24 @@ class Phantom:
         return self.rng.uniform(array.shape).astype(array.dtype) * 2 - 1
     
     
-    def generate_tissue(self, tissue, rand_like = None, order = 1):
+    def generate_tissue(self, tissue, shape, voxel_size, rand_like = None, order = 1):
         if rand_like is None:
             rand_like = self.__randn_like
             
         if tissue.sigma == 0:
-            return np.stack((np.ones(self.matrix_dims, dtype = np.float16) * tissue.c, np.ones(self.matrix_dims, dtype = np.float16) * tissue.rho), axis = 0)
+            return np.stack((np.ones(shape, dtype = np.float16) * tissue.c, np.ones(shape, dtype = np.float16) * tissue.rho), axis = 0)
             
-        scaling_factor = tissue.scale / ((self.voxel_dims[0] + self.voxel_dims[1] + self.voxel_dims[2]) / 3)
-        scaling_factor = np.clip(scaling_factor, 1/np.mean(self.matrix_dims), np.mean(self.matrix_dims) * 100)
-        size = (int(self.mask.shape[0] // scaling_factor + 1),
-				int(self.mask.shape[1] // scaling_factor + 1),
-			    int(self.mask.shape[2] // scaling_factor + 1),)
+        scaling_factor = tissue.scale / ((voxel_size[0] + voxel_size[1] + voxel_size[2]) / 3)
+        scaling_factor = np.clip(scaling_factor, 1/np.mean(shape), np.mean(shape) * 100)
+        size = (int(shape[0] // scaling_factor + 1),
+				int(shape[1] // scaling_factor + 1),
+			    int(shape[2] // scaling_factor + 1),)
         
 		# Implement anisotropy later
 
         # if multiple scatterers in one voxel, modify std of noise: in 3 dimensions, std of iid gaussians scales with ^3/2
-        if np.mean(size) > np.mean(self.matrix_dims):
-            size = self.matrix_dims
+        if np.mean(size) > np.mean(shape):
+            size = shape
             std_scale = scaling_factor ** 0.5
             scaling_factor = 1
         else:
@@ -249,128 +252,115 @@ class Phantom:
         tissue_matrix = tissue_matrix + rand_like(tissue_matrix) * tissue.sigma * std_scale
 
         tissue_matrix = scipy.ndimage.zoom(tissue_matrix, scaling_factor, order=order)
-        tissue_matrix = tissue_matrix[:self.matrix_dims[0],
-									  :self.matrix_dims[1],
-									  :self.matrix_dims[2],]
+        tissue_matrix = tissue_matrix[:shape[0],
+									  :shape[1],
+									  :shape[2],]
         return np.stack((tissue_matrix, tissue_matrix/tissue.c * tissue.rho), axis = 0)
     
     
-    def make_complete(self):
-        complete = np.zeros(self.matrix_dims, dtype = np.float16)
+    def make_complete(self, mask, voxel_size): # edit this and generate_tissue, include the matrix size and the voxel size in the argument - very important
+        complete = np.zeros(mask.shape, dtype = np.float16)
         for key in self.tissues.keys():
-            complete = np.where(self.mask == self.tissues[key].label, self.generate_tissue(self.tissues[key]), complete)
-        self.complete = complete
+            complete = np.where(mask == self.tissues[key].label, self.generate_tissue(self.tissues[key], mask.shape, voxel_size), complete)
+        return complete
 
 
     def get_complete(self):
         if self.complete is None:
-            self.make_complete()
-            return self.complete
-        else:
-            return self.complete
+            self.complete = self.make_complete(self.mask, self.voxel_dims)
+        return self.complete
         
         
     def crop_rotate_crop(self, bounds, transform, voxel_size, matrix_size):
         # keep a running log of discretization bias
         bias = np.array([0,0,0], dtype=np.float32)
         # compute the transformed bounds
-        # print(f'bounds: {bounds}')
-        # pretransform_crop_bounds_coords = np.array([(np.min(bounds[:,0]), np.max(bounds[:,0])), # can be removed
-        #                                     (np.min(bounds[:,1]), np.max(bounds[:,1])),
-        #                                     (np.min(bounds[:,2]), np.max(bounds[:,2]))])
-        # print(f'pretransform_bounds_coords: {pretransform_crop_bounds_coords}')
-        
         transformed_bounds = transform.apply_to_points(bounds, inverse=True)
-        # print(f'transformed_bounds: {transformed_bounds}')
-        
         
         # compute bounding box in global coords that contains the bounds
         first_crop_bounds_coords = np.array([(np.min(transformed_bounds[:,0]), np.max(transformed_bounds[:,0])),
                                             (np.min(transformed_bounds[:,1]), np.max(transformed_bounds[:,1])),
                                             (np.min(transformed_bounds[:,2]), np.max(transformed_bounds[:,2]))])
         
-        # print(f'transformed_bounds_coords: {first_crop_bounds_coords}')
-        # convert bounding coords to matrix indices so as to crop, then crop (or if needed, pad)
+        # convert bounding coords to matrix indices so as to crop
         first_crop_bounds_indices = (first_crop_bounds_coords / np.broadcast_to(self.voxel_dims, (2,3)).T + np.broadcast_to(self.matrix_dims, (2,3)).T/2)
         first_crop_bounds_indices[:,0] = np.floor(first_crop_bounds_indices[:,0])
         first_crop_bounds_indices[:,1] = np.ceil(first_crop_bounds_indices[:,1])
         first_crop_bounds_indices = first_crop_bounds_indices.astype(np.int32)
-        # print(f'first_crop_bounds_indices {first_crop_bounds_indices}')
-        first_crop_bounds_indices = np.stack((first_crop_bounds_indices[:,0] - 1, first_crop_bounds_indices[:,1] + 1)).T
+        first_crop_bounds_indices = np.stack((first_crop_bounds_indices[:,0] - 1, first_crop_bounds_indices[:,1] + 1)).T # helpful to extend the initial cropped region slightly to avoid discretization truncation error
         
-        bias += np.mean(first_crop_bounds_indices.astype(np.float32), axis=1) * self.voxel_dims - np.mean(first_crop_bounds_coords, axis=1)        
-        cropped_matrix = self.get_complete() # retrieve the matrix to transform - This should really be mask not complete in most cases
+        bias += np.mean(first_crop_bounds_indices.astype(np.float32), axis=1) * self.voxel_dims - np.mean(first_crop_bounds_coords, axis=1)    
+            
+        # If self from_mask or self_from image, get either the mask or the matrix
+        if self.from_mask:
+            medium = self.mask
+        else:
+            medium = self.get_complete() # retrieve the matrix to transform - This should really be mask not complete in most cases
         
         # pad if indices extend out of the computational region
-        print(f'first_crop_bounds_indices {first_crop_bounds_indices}')
         pad_x = max(-first_crop_bounds_indices[0,0], first_crop_bounds_indices[0,1] - self.matrix_dims[0], 0)
         pad_y = max(-first_crop_bounds_indices[1,0], first_crop_bounds_indices[1,1] - self.matrix_dims[1], 0)
         pad_z = max(-first_crop_bounds_indices[2,0], first_crop_bounds_indices[2,1] - self.matrix_dims[2], 0)
         
-        # add 1 index of extra padding:
-        # pad_x += 1
-        # pad_y += 1
-        # pad_z += 1
-        
-        print(f'padding: {pad_x, pad_y, pad_z}')
-            
-        if pad_x:
-            cropped_matrix = np.stack(
-                (np.pad(cropped_matrix[0], ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=(self.baseline[0],)),
-                    np.pad(cropped_matrix[1], ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=(self.baseline[1],))),
-                axis=0)
-        if pad_y:
-            cropped_matrix = np.stack(
-                (np.pad(cropped_matrix[0], ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=(self.baseline[0],)),
-                    np.pad(cropped_matrix[1], ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=(self.baseline[1],))),
-                axis=0)
-        if pad_z:
-            cropped_matrix = np.stack(
-                (np.pad(cropped_matrix[0], ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=(self.baseline[0],)),
-                    np.pad(cropped_matrix[1], ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=(self.baseline[1],))),
-                axis=0)
+        if self.from_mask:
+            if pad_x:
+                medium = np.pad(medium, ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=0)
+            if pad_y:
+                medium = np.pad(medium, ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=0)
+            if pad_z:
+                medium = np.pad(medium, ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=0)
+        else:
+            if pad_x:
+                medium = np.stack(
+                    (np.pad(medium[0], ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=(self.baseline[0],)),
+                        np.pad(medium[1], ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=(self.baseline[1],))),
+                    axis=0)
+            if pad_y:
+                medium = np.stack(
+                    (np.pad(medium[0], ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=(self.baseline[0],)),
+                        np.pad(medium[1], ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=(self.baseline[1],))),
+                    axis=0)
+            if pad_z:
+                medium = np.stack(
+                    (np.pad(medium[0], ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=(self.baseline[0],)),
+                        np.pad(medium[1], ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=(self.baseline[1],))),
+                    axis=0)
 
         first_crop_bounds_indices = first_crop_bounds_indices + np.stack((np.array((pad_x, pad_y, pad_z)),np.array((pad_x, pad_y, pad_z)))).T
-        print(f'to pad {np.stack((np.array((pad_x, pad_y, pad_z)),np.array((pad_x, pad_y, pad_z)))).T}')
-        print(f'new first_crop_bounds_indices {first_crop_bounds_indices}')
-        print(f'initial matrix shape {cropped_matrix.shape}')
-        cropped_matrix = cropped_matrix[:,  first_crop_bounds_indices[0,0]:first_crop_bounds_indices[0,1],
-                                            first_crop_bounds_indices[1,0]:first_crop_bounds_indices[1,1],
-                                            first_crop_bounds_indices[2,0]:first_crop_bounds_indices[2,1]]
-        print(f'cropped matrix shape {cropped_matrix.shape}, pre rotation')
         
-        # on the new cropped matrix, rotate by transform about the centroid
-        # rotated_matrix = transform.rotate_array(cropped_matrix, padwith=self.baseline)
-        rotated_matrix = transform.rotate_array(cropped_matrix, padwith=(0,0))
-        print(f'rotated matrix shape {rotated_matrix.shape}')
+        if self.from_mask:
+            cropped_matrix = medium[first_crop_bounds_indices[0,0]:first_crop_bounds_indices[0,1],
+                                    first_crop_bounds_indices[1,0]:first_crop_bounds_indices[1,1],
+                                    first_crop_bounds_indices[2,0]:first_crop_bounds_indices[2,1]]
+        else:
+            cropped_matrix = medium[:,  first_crop_bounds_indices[0,0]:first_crop_bounds_indices[0,1],
+                                        first_crop_bounds_indices[1,0]:first_crop_bounds_indices[1,1],
+                                        first_crop_bounds_indices[2,0]:first_crop_bounds_indices[2,1]]
+                                
+        # Perform rotation of the cropped region
+        if self.from_mask:
+            rotated_matrix = transform.rotate_array(cropped_matrix, padwith=0)
+        else:
+            rotated_matrix = transform.rotate_array(cropped_matrix, padwith=self.baseline)
+        bias = np.matmul(transform.get(inverse=False)[:3,:3], bias).squeeze()
         
-        print(f'bias pre transform {bias}')
-        bias = np.matmul(transform.get(inverse=False)[:3,:3], bias).squeeze() # For some reason transforming bias not needed
-        print(f'bias post transform {bias}')
-        
-        # crop once to obtain the correct matrix dimensions in global coordinates - rough crop?
-        # grid_size = matrix_size * voxel_size / self.voxel_dims + np.ones(3)
+        # Perform a crop to get the rough grid matrix in global coordinates
         grid_size = matrix_size * voxel_size / self.voxel_dims
-
-        print(f'grid size {grid_size}')
         rough_crop = self.crop_matrix(rotated_matrix, grid_size)
-        print(f'bias pre second crop {bias}')
-        bias = bias + self.compute_bias(np.array(rotated_matrix.shape[1:]), matrix_size) * self.voxel_dims
-        print(f'bias post second crop {bias}')
+        bias = bias + self.compute_bias(np.array(rotated_matrix.shape[-3:]), matrix_size) * self.voxel_dims
         
         # interpolate up to the correct simulation voxel_size
-        print(f'rough_crop = {rough_crop.shape}')
         sampled_matrix = self.interpolate_up(rough_crop, self.voxel_dims, voxel_size)
         bias = bias / voxel_size / matrix_size
-        print(f'interpolated_shape = {sampled_matrix.shape}')
         
         # finally perform a final crop to the desired computational matrix_size while correcting for accumulated bias
-        print(f'sampled_matrix shape {sampled_matrix.shape}')
-        print(f'matrix_size shape {matrix_size}')
-        print(f'bias {bias}')
         # final = self.crop_matrix(sampled_matrix, matrix_size, bias=bias)
         final = self.crop_matrix(sampled_matrix, matrix_size)
-        print(final.shape)
+                        
+        # If self from_mask, then sample complete, else, return final
+        if self.from_mask:
+            final = self.make_complete(mask=final, voxel_size=voxel_size)
+        
         return final
     
         
@@ -380,8 +370,6 @@ class Phantom:
         end = (start + np.array(matrix_size))
         start = np.floor(start).astype(np.int32)
         end = np.ceil(end).astype(np.int32)
-        print(f'start {start}')
-        print(f'end {end}')
         cropped_matrix = matrix[..., start[0]:end[0], start[1]:end[1], start[2]:end[2]]
         return cropped_matrix
     
@@ -403,10 +391,9 @@ class Phantom:
         
         points = np.stack(np.meshgrid(np.arange(0, transformed_x[-1]), np.arange(0, transformed_y[-1]), np.arange(0, transformed_z[-1]), indexing='ij'), axis=-1)
         if points.shape[0] * points.shape[1] * points.shape[2] > 5e8:
-            print('desired phantom array size is very large (>500,000,000 voxels), consider supplying a larger target_voxel_size or cropping the input image')
+            print('desired phantom array size is very large (>500,000,000 voxels), consider reducing the simulation grid size or increasing the simulation voxel size')
         if points.shape[0] * points.shape[1] * points.shape[2] > 2e9:
-            print('desired phantom array size is too large (>2e9 voxels), consider supplying a larger target_voxel_size or cropping the input image')
-            return 0
+            assert False, 'desired phantom array size is too large (>2e9 voxels), consider reducing the simulation grid size or increasing the simulation voxel size'
         
         if len(matrix.shape) > 3:
             sampled_matrix = []
@@ -415,7 +402,7 @@ class Phantom:
                 sampled_matrix.append(interp(points))
             sampled_matrix = np.stack(sampled_matrix, axis=0)
         else:
-            interp = RegularGridInterpolator((transformed_x, transformed_y, transformed_z), matrix, method='nearest')            
+            interp = RegularGridInterpolator((transformed_x, transformed_y, transformed_z), matrix, method='nearest')
             sampled_matrix = interp(points)
         return sampled_matrix
     
