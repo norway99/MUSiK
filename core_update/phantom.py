@@ -6,7 +6,7 @@ import os
 import sys
 sys.path.append('../utils')
 import utils
-import geometry_update as geometry
+import geometry
 from .tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
 
@@ -287,7 +287,12 @@ class Phantom:
         first_crop_bounds_indices[:,0] = np.floor(first_crop_bounds_indices[:,0])
         first_crop_bounds_indices[:,1] = np.ceil(first_crop_bounds_indices[:,1])
         first_crop_bounds_indices = first_crop_bounds_indices.astype(np.int32)
-        first_crop_bounds_indices = np.stack((first_crop_bounds_indices[:,0] - 1, first_crop_bounds_indices[:,1] + 1)).T # helpful to extend the initial cropped region slightly to avoid discretization truncation error
+        # buffer = np.amax(matrix_size) // 100
+        # print(f'buffer {buffer}')
+        # first_crop_bounds_indices = np.stack((first_crop_bounds_indices[:,0] - 5, first_crop_bounds_indices[:,1] + 5)).T # helpful to extend the initial cropped region slightly to avoid discretization truncation error
+        
+        
+        # Given some bounds of the computational region, crop a cube centered at the same centroid, ithe long (diagonal) hypotenuse of the 
         
         bias += np.mean(first_crop_bounds_indices.astype(np.float32), axis=1) * self.voxel_dims - np.mean(first_crop_bounds_coords, axis=1)    
             
@@ -327,6 +332,9 @@ class Phantom:
                     axis=0)
 
         first_crop_bounds_indices = first_crop_bounds_indices + np.stack((np.array((pad_x, pad_y, pad_z)),np.array((pad_x, pad_y, pad_z)))).T
+
+        # compute the grid size:
+        grid_size = matrix_size * voxel_size / self.voxel_dims
         
         if self.from_mask:
             cropped_matrix = medium[first_crop_bounds_indices[0,0]:first_crop_bounds_indices[0,1],
@@ -345,7 +353,6 @@ class Phantom:
         bias = np.matmul(transform.get(inverse=False)[:3,:3], bias).squeeze()
         
         # Perform a crop to get the rough grid matrix in global coordinates
-        grid_size = matrix_size * voxel_size / self.voxel_dims
         rough_crop = self.crop_matrix(rotated_matrix, grid_size)
         bias = bias + self.compute_bias(np.array(rotated_matrix.shape[-3:]), matrix_size) * self.voxel_dims
         
@@ -370,6 +377,7 @@ class Phantom:
         end = (start + np.array(matrix_size))
         start = np.floor(start).astype(np.int32)
         end = np.ceil(end).astype(np.int32)
+        
         cropped_matrix = matrix[..., start[0]:end[0], start[1]:end[1], start[2]:end[2]]
         return cropped_matrix
     

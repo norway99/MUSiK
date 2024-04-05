@@ -39,63 +39,6 @@ class Transform:
         
     def get(self, inverse=False, scale=1):
         return self.__get_matrix(inverse=inverse, scale=scale)
-    
-    
-    # necessary to maintain information when rotating
-    def __pad_rotation(self, array, padwith):
-        hypot = np.sqrt(np.sum(np.square(array.shape)))/2
-        if len(array.shape) == 4:
-            assert len(list(padwith)) == array.shape[0], f"length of padwidth ({len(padwith)}) must match length of array in channel dimension ({array.shape[0]})"
-            padded = []
-            for i in range(array.shape[0]):
-                padded.append(np.pad(array[i], 
-                                    ((int(hypot - array.shape[-3] / 2),int(hypot - array.shape[-3] / 2)), 
-                                     (int(hypot - array.shape[-2] / 2),int(hypot - array.shape[-2] / 2)), 
-                                     (int(hypot - array.shape[-1] / 2),int(hypot - array.shape[-1] / 2))), 
-                                    mode='constant', constant_values=(padwith[i],)))
-            return np.stack(padded, axis=0)
-        elif len(array.shape) == 3:
-            return np.pad(array, 
-                         ((int(hypot - array.shape[-3] / 2),int(hypot - array.shape[-3] / 2)), 
-                          (int(hypot - array.shape[-2] / 2),int(hypot - array.shape[-2] / 2)), 
-                          (int(hypot - array.shape[-1] / 2),int(hypot - array.shape[-1] / 2))), 
-                         mode='constant', constant_values=(padwith,))
-        else:
-            print('padding currently only supported for transformations of 3 dimensional single or multichannel arrays')
-            return 0
-    
-    
-    # necessary to maintain information when translating
-    def __pad_translation(self, array, translation, padwith):
-        x_pad = (max(0,-translation[0]), max(0,translation[0]))
-        y_pad = (max(0,-translation[1]), max(0,translation[1]))
-        z_pad = (max(0,-translation[2]), max(0,translation[2]))
-        
-        return np.pad(array, (x_pad, y_pad, z_pad), mode='constant', constant_values=(padwith,))
-    
-    
-    def __pad_transform(self, array, translation, padwith):
-        
-        hypot = np.sqrt(np.sum(np.square(np.array(array.shape[-3:]) + np.abs(translation))))/2 + 1
-        if len(array.shape) == 4:
-            assert len(list(padwith)) == array.shape[0], f"length of padwidth ({len(padwith)}) must match length of array in channel dimension ({array.shape[0]})"
-            padded = []
-            for i in range(array.shape[0]):
-                padded.append(np.pad(array[i], 
-                                    ((int(hypot - array.shape[-3] / 2),int(hypot - array.shape[-3] / 2)), 
-                                     (int(hypot - array.shape[-2] / 2),int(hypot - array.shape[-2] / 2)), 
-                                     (int(hypot - array.shape[-1] / 2),int(hypot - array.shape[-1] / 2))), 
-                                    mode='constant', constant_values=(padwith[i],)))
-            return np.stack(padded, axis=0)
-        elif len(array.shape) == 3:
-            return np.pad(array, 
-                         ((int(hypot - array.shape[-3] / 2),int(hypot - array.shape[-3] / 2)), 
-                          (int(hypot - array.shape[-2] / 2),int(hypot - array.shape[-2] / 2)), 
-                          (int(hypot - array.shape[-1] / 2),int(hypot - array.shape[-1] / 2))), 
-                         mode='constant', constant_values=(padwith,))
-        else:
-            print('padding currently only supported for transformations of 3 dimensional single or multichannel arrays')
-            return 0
         
     
     # pad to the minimum bounding box necessary to contain the phantom for a given transformation
@@ -145,37 +88,6 @@ class Transform:
         return padded, cent
     
     
-    # # for applying to an image matrix in 3D or a multichannel image matrix in 3D + 1D
-    # def apply_to_array_rot_tran(self, array, scale=1, padwith=None, inverse=False, order=1, mode='nearest'):
-    #     transform = self.__get_matrix(inverse=inverse, scale=scale)
-        
-    #     # need to pad array to avoid losing information
-    #     if padwith is not None:
-    #         array = self.__pad_rotation(array, padwith)
-        
-    #     center=0.5*np.array(array.shape[-3:])
-    #     offset = center - self.rotation.apply(center) # probably need to check that this holds in the case of inverse
-        
-    #     # translation = self.translation / -scale
-    #     translation = self.apply_to_point(-self.translation, inverse=inverse)
-        
-    #     if len(array.shape) > 3:
-    #         tarray = []
-    #         for i in range(array.shape[0]):
-    #             rotated = scipy.ndimage.affine_transform(array[i,:,::-1], transform[:-1,:-1], order=order, mode='nearest', offset=offset)[:,:,::-1]
-    #             if padwith is not None:
-    #                 rotated = self.__pad_translation(rotated, np.array(translation).astype(np.int), padwith[i])
-    #             tarray.append(scipy.ndimage.shift(rotated, translation, order=order, mode='nearest'))
-    #         tarray = np.stack(tarray, axis=0)
-    #     else:
-    #         rotated = scipy.ndimage.affine_transform(array[:,::-1], transform[:-1,:-1], order=order, mode='nearest', offset=offset)[:,::-1]
-    #         if padwith is not None:
-    #             rotated = self.__pad_translation(rotated, np.array(translation).astype(np.int), padwith)
-    #         tarray = scipy.ndimage.shift(rotated, translation, order=order, mode='nearest')
-            
-    #     return tarray
-    
-    
     # for applying to an image matrix in 3D or a multichannel image matrix in 3D + 1D
     def apply_to_array(self, array, scale=1, padwith=0, inverse=False, order=0, mode='nearest'):
         transform = self.__get_matrix(inverse=inverse)
@@ -204,6 +116,45 @@ class Transform:
             tarray = scipy.ndimage.affine_transform(translated, transform[:-1,:-1], order=order, mode='constant', cval=padwith, offset=offset)
                     
         return tarray, center
+    
+    def padtocube(self, array):
+        shape = array.shape[-3:]
+        hypot = int(max(shape) * np.sqrt(3))
+        left_pad1 = (hypot - shape[0]) // 2
+        right_pad1 = hypot - shape[0] -  left_pad1
+        left_pad2 = (hypot - shape[1]) // 2
+        right_pad2 = hypot - shape[1] -  left_pad2
+        left_pad3 = (hypot - shape[2]) // 2
+        right_pad3 = hypot - shape[2] -  left_pad3
+        if len(array.shape) > 3:
+            if len(array.shape) > 4:
+                print("why does the array have more than four dimensions?")
+            parray = []
+            for i in range(array.shape[0]):
+                parray.append(np.pad(array[i], ((left_pad1, right_pad1), (left_pad2, right_pad2), (left_pad3, right_pad3)), mode='edge'))
+            parray = np.stack(parray, axis=0)
+        else:
+            parray = np.pad(array, ((left_pad1, right_pad1), (left_pad2, right_pad2), (left_pad3, right_pad3)), mode='edge')
+        return parray
+    
+    
+    # for applying to an image matrix in 3D or a multichannel image matrix in 3D + 1D
+    def rotate_array(self, array, padwith=0, inverse=False, order=0):
+        padded_array = self.padtocube(array)
+        transform = self.__get_matrix(inverse=inverse)
+
+        center = np.array(padded_array.shape[-3:])/2
+        offset = center - self.rotation.apply(center, inverse=True)
+        
+        if len(padded_array.shape) > 3:
+            tarray = []
+            for i in range(padded_array.shape[0]):
+                tarray.append(scipy.ndimage.affine_transform(padded_array[i], transform[:-1,:-1].T, order=order, mode='constant', cval=padwith[i], offset=offset))
+            tarray = np.stack(tarray, axis=0)
+        else:
+            tarray = scipy.ndimage.affine_transform(padded_array, transform[:-1,:-1].T, order=order, mode='constant', cval=padwith, offset=offset)
+            
+        return tarray
         
         
     # for applying to a single point in R^3
@@ -275,6 +226,13 @@ class Transform:
     def __copy__(self,):
         return self.__class__(rotation = self.rotation.as_euler("ZYX", degrees=False), translation = self.translation)
         
+
+
+
+
+
+
+
 
 def create_sphere(centroid, radius, matrix_dims):
     

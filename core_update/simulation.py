@@ -109,9 +109,11 @@ class SimProperties:
     
     
     def calc_bounding_vertices(self, matrix_size, PML_size, voxel_dims):
-        new_grid_size = (np.array(matrix_size) - np.array(PML_size)) * np.array(voxel_dims)
-        
+        new_grid_size = (np.array(matrix_size) - 2 * np.array(PML_size)) * np.array(voxel_dims)
         centroid = (0, new_grid_size[1]/2, new_grid_size[2]/2)
+        
+        # new_grid_size = np.array(matrix_size) * np.array(voxel_dims)
+        # centroid = (PML_size[0], new_grid_size[1]/2, new_grid_size[2]/2)
         
         vertices = np.array([
                 (0, 0, 0),
@@ -170,26 +172,24 @@ class Simulation:
     # given a simulation index, return the simulation file
     def __prep_by_index(self, index, dry=False):
         start_time = time.time()
-        # print(f'preparing simulation index: {index:18d}')
         for transducer_number, transducer in enumerate(self.transducer_set.transducers):
             if index - transducer.get_num_rays() < 0:
                 steering_angle = transducer.steering_angles[index]
-                # elapsed_time = time.time()
                 sim_phantom = self.phantom.get_complete()
-                # print('created simulation phantom in      {:11.2f} seconds'.format(round(time.time() - elapsed_time, 3)))
-                # elapsed_time = time.time()
                 sim_sensor = self.sensor
                 
-                if not dry:
+                if not dry:                    
                     affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
-                    sim_phantom, center = affine.apply_to_array(sim_phantom, scale = self.phantom.voxel_dims[0], padwith=self.phantom.baseline)
-                    sim_phantom = self.__crop_phantom(sim_phantom, center)
+                    # sim_phantom, center = affine.apply_to_array(sim_phantom, scale = self.phantom.voxel_dims[0], padwith=self.phantom.baseline)
+                    # sim_phantom = self.__crop_phantom(sim_phantom, center)
+                    sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
+                    print(sim_phantom.shape)
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
                     print('preparation for sim {:4d} completed in {:15.2f} seconds'.format(self.index, round(time.time() - start_time, 3)))
                     return prepped
                 else:
                     affine = geometry.Transform()
-                    sim_phantom = np.ones((2, self.sim_properties.grid_size[0], self.sim_properties.grid_size[1], self.sim_properties.grid_size[2])) * np.array([1540, 1000])[:,None,None,None]
+                    sim_phantom = np.ones((2, self.sim_properties.matrix_size[0], self.sim_properties.matrix_size[1], self.sim_properties.matrix_size[2])) * np.array(self.phantom.baseline)[:,None,None,None]
                     self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle, dry=True)
             else:
                 index -= transducer.get_num_rays()
@@ -204,42 +204,6 @@ class Simulation:
             self.__write_signal(index, signals, time_array)
             print('simulation {:6d} completed in {:5.2f} seconds'.format(index, round(time.time() - start_time, 3)))
             return signals, time_array
-                
-
-    # crop phantom to the grid size of the simulation        
-    def __crop_phantom(self, sim_phantom, center):
-        crop_size = [self.sim_properties.grid_size[0] - 2 * self.sim_properties.PML_size[0],
-                     self.sim_properties.grid_size[1] - 2 * self.sim_properties.PML_size[1],
-                     self.sim_properties.grid_size[2] - 2 * self.sim_properties.PML_size[2],]
-                
-        axial_zero = int(center[-3])
-        
-        if crop_size[-3] > axial_zero:
-            sim_phantom = np.stack(
-                (np.pad(sim_phantom[0], ((0, crop_size[-3]),(0,0),(0,0)), 'constant', constant_values=(self.phantom.baseline[0],)),
-                 np.pad(sim_phantom[1], ((0, crop_size[-3]),(0,0),(0,0)), 'constant', constant_values=(self.phantom.baseline[1],))),
-                axis=0)
-        
-        if crop_size[-2]//2 > int(center[-2]) or crop_size[-2]//2 > sim_phantom.shape[-2] - int(center[-2]):
-            expand = max(crop_size[-2]//2 - int(center[-2]), crop_size[-2]//2 - (sim_phantom.shape[-2] - int(center[-2])))
-            sim_phantom = np.stack(
-                (np.pad(sim_phantom[0], ((0,0),(expand, expand),(0,0)), 'constant', constant_values=(self.phantom.baseline[0],)),
-                 np.pad(sim_phantom[1], ((0,0),(expand, expand),(0,0)), 'constant', constant_values=(self.phantom.baseline[1],))),
-                axis=0)
-            center = center + np.array([0, expand//2, 0])
-            
-        if crop_size[-1]//2 > int(center[-1]) or crop_size[-1]//2 > sim_phantom.shape[-1] - int(center[-1]):
-            expand = max(crop_size[-1]//2 - int(center[-1]), crop_size[-1]//2 - (sim_phantom.shape[-1] - int(center[-1])))
-            sim_phantom = np.stack(
-                (np.pad(sim_phantom[0], ((0,0),(0,0),(expand, expand)), 'constant', constant_values=(self.phantom.baseline[0],)),
-                 np.pad(sim_phantom[1], ((0,0),(0,0),(expand, expand)), 'constant', constant_values=(self.phantom.baseline[1],))),
-                axis=0)
-            center = center + np.array([0, 0, expand//2])
-                                
-        return sim_phantom[:,
-                           axial_zero                                :  crop_size[-3] + axial_zero, 
-                           int((center[-2] - crop_size[-2] / 2)) : int((center[-2] + crop_size[-2] / 2)), 
-                           int((center[-1] - crop_size[-1] / 2)) : int((center[-1] + crop_size[-1] / 2)),]
     
     
     # given the simulation properties, phantom, and transducer, create the simulation file for the cuda binary and run
@@ -247,7 +211,7 @@ class Simulation:
                 
         # setup kgrid object
         pml_size_points = kwave.data.Vector(self.sim_properties.PML_size)  # [grid points]
-        grid_size_points = kwave.data.Vector(self.sim_properties.grid_size) - 2 * pml_size_points  # [grid points]
+        grid_size_points = kwave.data.Vector(self.sim_properties.matrix_size) - 2 * pml_size_points  # [grid points]
         grid_size_meters = grid_size_points * self.phantom.voxel_dims  # [m]
         grid_spacing_meters = self.phantom.voxel_dims
         kgrid = kwave.kgrid.kWaveGrid(grid_size_points, grid_spacing_meters)
