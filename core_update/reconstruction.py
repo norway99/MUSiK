@@ -55,10 +55,10 @@ class DAS(Reconstruction):
 
     def __init__(self,
                  experiment = None):
-        for transducer in experiment.transducer_set.transducers:
-            if not isinstance(transducer, Focused):
-                print("Warning: attempting to instantiate DAS reconstruction class but transducer set does not exclusively contain focused transducers.")
-                break
+        # for transducer in experiment.transducer_set.transducers:
+            # if not isinstance(transducer, Focused):
+            #     print("Warning: attempting to instantiate DAS reconstruction class but transducer set does not exclusively contain focused transducers.")
+            #     break
         super().__init__(experiment)
             
         
@@ -87,13 +87,13 @@ class DAS(Reconstruction):
         processed = []
         transducer_count = 0
         transducer, transducer_transform = self.transducer_set[transducer_count]
+        transform = transducer_transform
         running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
         for index in tqdm.tqdm(range(len(self.results))):
-            if index > running_index_list[transducer_count] - 1:
+            if index > (running_index_list[transducer_count] - 1):
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
                 transform = transducer_transform * transducer.ray_transforms[index - running_index_list[transducer_count]]
-                
             processed.append(transducer.preprocess(transducer.make_scan_line(self.results[index][1]), self.results[index][0], self.sim_properties))
             coords.append(self.__time_to_coord(self.results[index][0], transform))
             time.append(self.results[index][0])

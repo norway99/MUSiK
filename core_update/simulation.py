@@ -315,9 +315,7 @@ class Simulation:
             if index - transducer.get_num_rays() < 0:
                 affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
                 steering_angle = transducer.steering_angles[index]
-                sim_phantom = self.phantom.get_complete()
-                sim_phantom, center = affine.apply_to_array(sim_phantom, scale = self.phantom.voxel_dims[0], padwith=self.phantom.baseline)
-                sim_phantom = self.__crop_phantom(sim_phantom, center)
+                sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                 break
             else:
                 index -= transducer.get_num_rays()
