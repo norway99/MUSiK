@@ -274,8 +274,13 @@ class Phantom:
     def crop_rotate_crop(self, bounds, transform, voxel_size, matrix_size):
         # keep a running log of discretization bias
         bias = np.array([0,0,0], dtype=np.float32)
-        # compute the transformed bounds
-        transformed_bounds = transform.apply_to_points(bounds, inverse=False)
+        
+        # need to swap order of rotation and translation according to homogeneous coordinates convention
+        rotation = transform.rotation.as_euler('ZYX')
+        translation = -np.matmul(transform.get(inverse=True)[:3,:3], transform.translation)
+        swapped_transform = geometry.Transform(rotation=rotation, translation=translation)
+        transform = swapped_transform
+        transformed_bounds = transform.apply_to_points(bounds, inverse=True) # need to edit this - homogeneous matrix definitions should be double checked
         
         # compute bounding box in global coords that contains the bounds
         first_crop_bounds_coords = np.array([(np.min(transformed_bounds[:,0]), np.max(transformed_bounds[:,0])),

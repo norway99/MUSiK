@@ -271,6 +271,7 @@ def generate_pose_spherical(r_mean=5e-3, r_std=0, view_std=0, yaw_fraction=0.5, 
     
     orientation = np.array([theta_p, phi_p, gamma_p])
     transform = Transform(orientation, (0, 0, 0))
+    
     position = transform.apply_to_point(np.array([-r, 0, 0]))
     
     if view_std != 0:

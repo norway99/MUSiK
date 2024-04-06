@@ -74,6 +74,8 @@ class SimProperties:
         simprops = cls()
         for key in dictionary.keys():
             simprops.__setattr__(key, dictionary[key])
+        simprops.matrix_size = np.array(simprops.matrix_size)
+        simprops.bounds = np.array(simprops.bounds)
         return simprops
     
     
