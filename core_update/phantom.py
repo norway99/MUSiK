@@ -270,13 +270,14 @@ class Phantom:
             self.complete = self.make_complete(self.mask, self.voxel_dims)
         return self.complete
         
-        
+    
+    # voxel_size and matrix_size refer to the size of a voxel (m,m,m) in the computational grid and the matrix size of the computational grid
     def crop_rotate_crop(self, bounds, transform, voxel_size, matrix_size):
         # keep a running log of discretization bias
         bias = np.array([0,0,0], dtype=np.float32)
         
         # need to swap order of rotation and translation according to homogeneous coordinates convention
-        rotation = transform.rotation.as_euler('ZYX')
+        rotation = -transform.rotation.as_euler('ZYX')
         translation = -np.matmul(transform.get(inverse=True)[:3,:3], transform.translation)
         swapped_transform = geometry.Transform(rotation=rotation, translation=translation)
         transform = swapped_transform

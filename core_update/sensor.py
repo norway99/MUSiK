@@ -83,7 +83,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         
         
     # takes in a list of sensor coords (global coordinate system), transforms to match reference of transmit transducer, and discretizes
-    def make_sensor_mask(self, not_transducer, phantom, computational_grid_shape, transmit_transform = None):
+    def make_sensor_mask(self, not_transducer, computational_grid_shape, grid_voxel_size, transmit_transform = None):
         #if self.sensor_coords is None:
         if self.aperture_type == "single_transducer":
             sensor_mask = not_transducer.indexed_mask
@@ -94,7 +94,8 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             if transmit_transform is None:
                 raise Exception("Please supply a transmit transducer affine transformation")
             transformed_sensor_coords = transmit_transform.apply_to_points(self.sensor_coords, inverse=True)
-            transformed_sensor_coords = np.divide(transformed_sensor_coords, phantom.voxel_dims)
+            # transformed_sensor_coords = np.divide(transformed_sensor_coords, phantom.voxel_dims)
+            transformed_sensor_coords = np.divide(transformed_sensor_coords, grid_voxel_size)
             
             mask_centroid = np.array(computational_grid_shape)/2
             mask_centroid[0] = 0
