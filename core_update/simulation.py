@@ -89,7 +89,7 @@ class SimProperties:
         print(f'optimizing simulation parameters: [voxel_size ({self.voxel_size[0]}m)^3], [duration {self.t_end}s], [matrix_size {self.matrix_size}], [functional_size {np.array(self.matrix_size) - 2 * np.array(self.PML_size)}]')
     
     
-    def __optimize_voxel_size(self, frequency=4e6, sos=1540, lambda_factor=2):
+    def __optimize_voxel_size(self, frequency=4e6, sos=1540, lambda_factor=1):
         # refer to k-wave documentation and manual for the precise calculation of voxel size, dependent on the timestep and the pulse frequency
         wavelength = sos / frequency
         voxel_dims = wavelength / (4 * lambda_factor)
@@ -229,8 +229,8 @@ class Simulation:
         # setup kgrid object
         pml_size_points = kwave.data.Vector(self.sim_properties.PML_size)  # [grid points]
         grid_size_points = kwave.data.Vector(self.sim_properties.matrix_size) - 2 * pml_size_points  # [grid points]
-        grid_size_meters = grid_size_points * self.phantom.voxel_dims  # [m]
-        grid_spacing_meters = self.phantom.voxel_dims
+        grid_size_meters = grid_size_points * self.sim_properties.voxel_size  # [m]
+        grid_spacing_meters = self.sim_properties.voxel_size
         kgrid = kwave.kgrid.kWaveGrid(grid_size_points, grid_spacing_meters)
         t_end = self.sim_properties.t_end # [s]
         

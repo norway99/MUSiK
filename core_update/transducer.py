@@ -13,28 +13,32 @@ from scipy.signal import hilbert
 
 class Transducer:
     def __init__(self,
-                 label = None,
-                 max_frequency = 2e6,
-                 source_strength = 1e6,
-                 cycles = 2,
-                 elements = 32,
-                 active_elements = None,
-                 element_width = 1e-4,
-                 elevation = 0.01,
-                 kerf = 0,
-                 radius = float('inf'),
-                 focus_azimuth = float('inf'), # PW by default
-                 focus_elevation = float('inf'),
-                 sensor_sampling_scheme = 'centroid',
-                 sweep = np.pi/3,
-                 ray_num = 64,
-                 imaging_ndims = 2, # should be 2 or 3
-                 transmit_apodization = 'Tukey',
-                 receive_apodization = 'Rectangular',
-                 harmonic = 1,
-                 bandwidth = 100,
-                 compression_fac = None,
-                 normalize = True,
+                 label                      = None,
+                 max_frequency              = 2e6,
+                 source_strength            = 1e6,
+                 cycles                     = 2,
+                 elements                   = 32,
+                 active_elements            = None,
+                 
+                 width                      = 1e-2,         # transducer total width
+                 height                     = 1e-2,         # transducer total width
+                 
+                #  element_width = 1e-4,                    # changed due to dynamic grid sizing
+                #  elevation = 0.01,                        # changed due to dynamic grid sizing
+                #  kerf = 0,                                # removed
+                 radius                     = float('inf'),
+                 focus_azimuth              = float('inf'), # PW by default
+                 focus_elevation            = float('inf'),
+                 sensor_sampling_scheme     = 'centroid',
+                 sweep                      = np.pi/3,
+                 ray_num                    = 64,
+                 imaging_ndims              = 2, # should be 2 or 3
+                 transmit_apodization       = 'Tukey',
+                 receive_apodization        = 'Rectangular',
+                 harmonic                   = 1,
+                 bandwidth                  = 100,
+                 compression_fac            = None,
+                 normalize                  = True,
                  ):
 
         # probably should check that the geometry values are all positive!
@@ -45,10 +49,12 @@ class Transducer:
         self.cycles = cycles
         self.elements = elements
         self.active_elements = np.arange(elements)
-        self.element_width = element_width
-        self.elevation = elevation
-        self.kerf = kerf
-        self.azimuth = self.elements*(self.element_width+self.kerf) - self.kerf
+        self.width = width
+        self.height = height
+        # self.element_width = element_width
+        # self.elevation = elevation
+        # self.kerf = kerf
+        # self.azimuth = self.elements*(self.element_width+self.kerf) - self.kerf         # same as self.width
         self.radius = radius
         self.focus_azimuth = focus_azimuth
         self.focus_elevation = focus_elevation
@@ -146,9 +152,10 @@ class Transducer:
             sensor_z_coords = 0
         else:
             wavelength = c0/self.max_frequency
-            numpts = int(self.elevation/wavelength * 2)
-            sensor_z_coords = np.linspace(-self.elevation/2, self.elevation/2, num = numpts)
-        sensor_y_coords = np.transpose(np.linspace(-self.azimuth/2 + self.element_width/2, self.azimuth/2 - self.element_width/2, num = self.elements))
+            numpts = int(self.height/wavelength * 2)
+            sensor_z_coords = np.linspace(-self.height/2, self.height/2, num = numpts)
+        sensor_y_coords = np.transpose(np.linspace(-self.width/2 + (self.width / self.elements)/2, self.width/2 - (self.width / self.elements)/2, num = self.elements))
+        
         sensor_coords = np.zeros((self.elements, numpts, 3))
         for col_num in range(numpts): 
             sensor_coords[:, col_num, 1] = sensor_y_coords
@@ -253,24 +260,35 @@ class Transducer:
 
 
     def __discretize(self, kgrid):
-        element_width = self.element_width / kgrid.dy
-        if element_width < 1:
-            element_width = 1
-        kerf = self.kerf / kgrid.dy
-        azimuth = self.azimuth / kgrid.dy
-        elevation = self.elevation / kgrid.dz        
+        # element_width = self.element_width / kgrid.dy
+        # if element_width < 1:
+        #     element_width = 1
+        element_width = 1
+        # kerf = self.kerf / kgrid.dy
+        kerf = 0
+        azimuth = self.width / kgrid.dy
+        elevation = self.height / kgrid.dz    
+        
+        print(f'element_width, kerf, azimuth, elevation: {element_width, kerf, azimuth, elevation}')    
         return element_width, kerf, azimuth, elevation
         
         
     def make_notatransducer(self, kgrid, c0, s_angle, pml) -> kwave.ktransducer.NotATransducer: #  gets called immediately before sim is run
         element_width, kerf, azimuth, elevation = self.__discretize(kgrid)
+        num_elements = self.width // kgrid.dy
         
         position = [1, ((kgrid.Ny + pml[1] - azimuth - 1))/2, ((kgrid.Nz + pml[2] - elevation - 1))/2]
         # position in terms of transducer-centric coordinates is always 0 0 0, this is the corner of the transducer
                     
+        # my_transducer = kwave.ktransducer.kWaveTransducerSimple(
+        #         kgrid, self.elements, element_width, elevation, kerf,
+        #         position, self.radius)
+        
         my_transducer = kwave.ktransducer.kWaveTransducerSimple(
-                kgrid, self.elements, element_width, elevation, kerf,
+                kgrid, num_elements, element_width, elevation, kerf,
                 position, self.radius)
+        
+        print(f'self.elements, element_width, elevation, kerf: {num_elements, element_width, elevation, kerf}')
         
         not_transducer = kwave.ktransducer.NotATransducer(transducer = my_transducer,
                                             kgrid = kgrid,
@@ -332,33 +350,34 @@ class Transducer:
 class Focused(Transducer):
 
     def __init__(self,
-                 label = None,
-                 max_frequency = 2e6,
-                 source_strength = 1e6,
-                 cycles = 2,
-                 elements = 32,
-                 active_elements = None,
-                 element_width = 1e-4,
-                 elevation = 0.01,
-                 kerf = 0,
-                 radius = float('inf'),
-                 focus_azimuth = 20e-3,
-                 focus_elevation = float('inf'),
-                 sensor_sampling_scheme = 'centroid',
-                 sweep = np.pi/3,
-                 ray_num = 64,
-                 imaging_ndims = 2, # should be 2 or 3
-                 transmit_apodization = 'Hanning', # 
-                 receive_apodization = 'Rectangular',
-                 harmonic = 1,
-                 bandwidth = 100,
-                 compression_fac = None,
-                 normalize = True,
+                 label                      = None,
+                 max_frequency              = 2e6,
+                 source_strength            = 1e6,
+                 cycles                     = 2,
+                 elements                   = 32,
+                 active_elements            = None,
+                 
+                 width                      = 1e-2,         # transducer total width
+                 height                     = 1e-2,         # transducer total width
+                 
+                 radius                     = float('inf'),
+                 focus_azimuth              = 20e-3,
+                 focus_elevation            = float('inf'),
+                 sensor_sampling_scheme     = 'centroid',
+                 sweep                      = np.pi/3,
+                 ray_num                    = 64,
+                 imaging_ndims              = 2, # should be 2 or 3
+                 transmit_apodization       = 'Hanning', # 
+                 receive_apodization        = 'Rectangular',
+                 harmonic                   = 1,
+                 bandwidth                  = 100,
+                 compression_fac            = None,
+                 normalize                  = True,
                  ):
         if focus_azimuth == float('inf'):
             print('Focused transducers must have a finite focal length. Consider instantiating a plane-wave transducer if you require infinite focal length.')
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
-                         element_width, elevation, kerf, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
+                         width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
                          sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, harmonic, bandwidth, compression_fac, normalize)
         self.ray_transforms = self.make_ray_transforms(imaging_ndims, self.sweep, self.ray_num)[0]
         self.steering_angles = np.zeros(self.get_num_rays())
@@ -420,9 +439,10 @@ class Planewave(Transducer):
                  cycles = 2,
                  elements = 32,
                  active_elements = None,
-                 element_width = 1e-4,
-                 elevation = 32,
-                 kerf = 0,
+
+                 width                      = 1e-2,         # transducer total width
+                 height                     = 1e-2,         # transducer total width
+                 
                  radius = float('inf'),
                  focus_azimuth = float('inf'),
                  focus_elevation = 20e-3,
@@ -435,7 +455,7 @@ class Planewave(Transducer):
                  receive_apodization = 'Rectangular'
                  ):    
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
-                         element_width, elevation, kerf, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
+                         width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
                          sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization)
 
         self.set_steering_angles(imaging_ndims, sweep, self.ray_num)
