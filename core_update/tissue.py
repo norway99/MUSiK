@@ -41,7 +41,7 @@ class Tissue:
         self.c = c
         self.rho = rho
         self.sigma = sigma
-        self.scale = scale
+        self.scale = scale # [s1, s2, s3, ...]
         self.label = label
 	
     def save(self,):

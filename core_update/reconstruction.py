@@ -5,6 +5,8 @@ import glob
 import matplotlib.pyplot as plt
 import tqdm
 import sys
+import multiprocessing
+from scipy.interpolate import LinearNDInterpolator
 sys.path.append('../utils')
 
 import utils
@@ -76,47 +78,70 @@ class DAS(Reconstruction):
         
     def __time_to_coord(self, t, transform):
         dists = t * self.phantom.baseline[0] / 2
+        
+        #------------------------
+        dists = dists * 0.92
+        #------------------------
+        
         dists = np.pad(dists[...,None], ((0,0),(0,2)), mode='constant', constant_values=0)
         coords = transform.apply_to_points(dists)
         return coords
     
         
-    def preprocess_data(self,):
-        coords = []
-        time = []
-        processed = []
+    # def preprocess_data(self,):
+    #     coords = []
+    #     time = []
+    #     processed = []
+    #     transducer_count = 0
+    #     transducer, transducer_transform = self.transducer_set[transducer_count]
+    #     transform = transducer_transform
+    #     running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
+    #     for index in tqdm.tqdm(range(len(self.results))):
+    #         if index > (running_index_list[transducer_count] - 1):
+    #             transducer_count += 1
+    #             transducer, transducer_transform = self.transducer_set[transducer_count]
+    #         transform = transducer_transform * transducer.ray_transforms[index - running_index_list[transducer_count]]
+    #         # self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, sos=self.phantom.baseline[0])
+    #         processed.append(transducer.preprocess(transducer.make_scan_line(self.results[index][1]), self.results[index][0], self.sim_properties))
+    #         coords.append(self.__time_to_coord(self.results[index][0], transform))
+    #         time.append(self.results[index][0])
+            
+    #     return time, coords, processed
+
+    def process_line(self, index, transducer, transform,):
+        processed = transducer.preprocess(transducer.make_scan_line(self.results[index][1]), self.results[index][0], self.sim_properties)
+        coords = self.__time_to_coord(self.results[index][0], transform)
+        time = self.results[index][0]
+        return time, coords, processed
+
+
+    def preprocess_data(self, workers=8):
         transducer_count = 0
         transducer, transducer_transform = self.transducer_set[transducer_count]
-        transform = transducer_transform
         running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
+        
+        indices = []
+        transducers = []
+        transforms = []
         for index in tqdm.tqdm(range(len(self.results))):
-            if index > (running_index_list[transducer_count] - 1):
+            if index > running_index_list[transducer_count] - 1:
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
-                transform = transducer_transform * transducer.ray_transforms[index - running_index_list[transducer_count]]
-            processed.append(transducer.preprocess(transducer.make_scan_line(self.results[index][1]), self.results[index][0], self.sim_properties))
-            coords.append(self.__time_to_coord(self.results[index][0], transform))
-            time.append(self.results[index][0])
+            transform = transducer_transform * transducer.ray_transforms[index - running_index_list[transducer_count]]
             
+            indices.append(index)
+            transducers.append(transducer)
+            transforms.append(transform)
+        
+        results = []
+        with multiprocessing.Pool(workers) as p:
+            results.append(p.starmap(self.process_line, zip(indices, transducers, transforms)))
+        time = [r[0] for r in results[0]]
+        coords = [r[1] for r in results[0]]
+        processed = [r[2] for r in results[0]]
         return time, coords, processed
     
-    
-    # def plot_scatter(self,):
-    #     coords, processed, time = self.preprocess_data()
-    #     coords = np.stack(coords, axis=0)
-    #     processed = np.stack(processed, axis=0)
         
-    #     fig, ax = plt.subplots(1,1, figsize=(8,8))
-        
-    #     coords = np.reshape(coords, (-1,3))
-    #     processed = np.reshape(processed, (-1,))
-        
-    #     ax.scatter(coords[:,0], coords[:,1], c=np.clip(processed, 0, 10000), s=2.5, cmap='gray')
-        
-    #     ax.set_aspect('equal')
-        
-        
-# broken
     def plot_scatter(self, scale=5000):
        
         colorme = lambda x: (     [1,0,0] if x % 7 == 0 
@@ -145,9 +170,67 @@ class DAS(Reconstruction):
         
         colors = np.array([1,1,1]) - np.broadcast_to(intensity[:,None], base_color.shape) * base_color
         
-        ax.scatter(coords[:,0], coords[:,1], c=colors, s=time*100000, alpha = 0.002)
+        ax.scatter(coords[:,0], coords[:,1], c=colors, s=time*100000, alpha = 0.05)
         
         ax.set_aspect('equal')
+        
+
+    def get_image(self, bounds=None, matsize=256, dimensions=3, downsample = 1):
+        assert dimensions in [2,3], print("Image can be 2 or 3 dimensional")
+        assert (downsample > 0 and downsample <= 1), print("Downsample must be a float on (0,1]")
+        
+        time, coords, processed = self.preprocess_data()
+        coords = np.stack(coords, axis=0)
+        processed = np.stack(processed, axis=0)
+
+        if bounds is None:
+            flat_coords = coords.reshape(-1,3)
+            bounds = np.array([(np.min(flat_coords[:,0]),np.max(flat_coords[:,0])),
+                            (np.min(flat_coords[:,1]),np.max(flat_coords[:,1])),
+                            (np.min(flat_coords[:,2]),np.max(flat_coords[:,2]))])
+        elif type(bounds) == list or type(bounds) == tuple or type(bounds) == np.ndarray:
+            bounds = np.array(bounds)
+        elif type(bounds) == float:
+            bounds = np.array([(-bounds,bounds),(-bounds,bounds),(-bounds,bounds)])
+        else:
+            print("provide bounds as a list, tuple, numpy array, or float")
+            return 0
+
+        X = np.linspace(bounds[0,0], bounds[0,1], matsize)
+        Y = np.linspace(bounds[1,0], bounds[1,1], matsize)
+        Z = np.linspace(bounds[2,0], bounds[2,1], matsize)
+        
+        if dimensions == 2:
+            X, Y = np.meshgrid(X, Y)
+        else:
+            X, Y, Z = np.meshgrid(X, Y, Z)
+
+        signals = []
+        count = 0
+        for transducer in tqdm.tqdm(self.transducer_set.transducers):
+            subset_coords = coords[count:(count+transducer.get_num_rays()),:].reshape(-1,3)
+            subset_processed = processed[count:(count+transducer.get_num_rays())].reshape(-1)
+            
+            if downsample != 1:
+                subset_coords = subset_coords[::int(1/downsample)]
+                subset_processed = subset_processed[::int(1/downsample)]
+                            
+            if dimensions == 2:
+                interp = LinearNDInterpolator(subset_coords[:,:2], subset_processed)
+                signals.append(interp(X, Y))
+            else:
+                interp = LinearNDInterpolator(subset_coords, subset_processed)
+                signals.append(interp(X, Y, Z))
+            count += transducer.get_num_rays()
+        
+        combined_signals = np.stack(signals, axis=0)
+        masked_signals = np.ma.masked_array(combined_signals, np.isnan(combined_signals))
+        image = np.ma.average(masked_signals, axis=0)
+        image = image.filled(np.nan)
+        
+        return image, signals
+        
+        
         
 class Compounding(Reconstruction):
 

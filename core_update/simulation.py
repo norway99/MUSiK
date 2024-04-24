@@ -52,9 +52,11 @@ class SimProperties:
                  alpha_coeff = 0.75, 	                # [dB/(MHz^y cm)]
                  alpha_power = 1.5,
     ):
+        
+        # Set time and voxel size dynamically - time based on grid length
         self.grid_size   = np.array(grid_size)
         self.voxel_size  = np.array(voxel_size)
-        self.PML_size    = PML_size
+        self.PML_size    = np.array(PML_size)
         self.PML_alpha   = PML_alpha
         self.t_end       = t_end
         self.bona        = bona
@@ -79,9 +81,24 @@ class SimProperties:
         return simprops
     
     
-    def optimize_voxel_size(self, frequency):
+    def optimize_simulation_parameters(self, frequency, sos=1540):
+        self.t_end       = self.__optimize_simulation_duration(sos=sos)
+        self.voxel_size  = self.__optimize_voxel_size(frequency=frequency, sos=sos)
+        self.matrix_size = self.calc_matrix_size(self.grid_size, self.voxel_size)
+        self.bounds      = self.calc_bounding_vertices(self.matrix_size, self.PML_size, self.voxel_size)
+        print(f'optimizing simulation parameters: [voxel_size ({self.voxel_size[0]}m)^3], [duration {self.t_end}s], [matrix_size {self.matrix_size}], [functional_size {np.array(self.matrix_size) - 2 * np.array(self.PML_size)}]')
+    
+    
+    def __optimize_voxel_size(self, frequency=4e6, sos=1540, lambda_factor=1):
         # refer to k-wave documentation and manual for the precise calculation of voxel size, dependent on the timestep and the pulse frequency
-        return NotImplemented
+        wavelength = sos / frequency
+        voxel_dims = wavelength / (4 * lambda_factor)
+        return np.array((voxel_dims, voxel_dims, voxel_dims))
+    
+    
+    def __optimize_simulation_duration(self, sos=1540, pad_factor = 1.1):
+        duration = self.grid_size[0] / sos * 2 * pad_factor
+        return duration
     
     
     def largest_prime_factor(self, n): 
@@ -182,10 +199,8 @@ class Simulation:
                 
                 if not dry:                    
                     affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
-                    # sim_phantom, center = affine.apply_to_array(sim_phantom, scale = self.phantom.voxel_dims[0], padwith=self.phantom.baseline)
-                    # sim_phantom = self.__crop_phantom(sim_phantom, center)
+                    self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0])
                     sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
-                    print(sim_phantom.shape)
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
                     print('preparation for sim {:4d} completed in {:15.2f} seconds'.format(self.index, round(time.time() - start_time, 3)))
                     return prepped
@@ -214,8 +229,8 @@ class Simulation:
         # setup kgrid object
         pml_size_points = kwave.data.Vector(self.sim_properties.PML_size)  # [grid points]
         grid_size_points = kwave.data.Vector(self.sim_properties.matrix_size) - 2 * pml_size_points  # [grid points]
-        grid_size_meters = grid_size_points * self.phantom.voxel_dims  # [m]
-        grid_spacing_meters = self.phantom.voxel_dims
+        grid_size_meters = grid_size_points * self.sim_properties.voxel_size  # [m]
+        grid_spacing_meters = self.sim_properties.voxel_size
         kgrid = kwave.kgrid.kWaveGrid(grid_size_points, grid_spacing_meters)
         t_end = self.sim_properties.t_end # [s]
         
@@ -244,7 +259,7 @@ class Simulation:
         medium.sound_speed = sound_speed_map
         medium.density = density_map
         
-        sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(not_transducer, self.phantom, self.sim_properties.grid_size, affine)
+        sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(not_transducer, self.sim_properties.grid_size, self.sim_properties.voxel_size, affine)
             
         return (medium, kgrid, not_transducer, sensor_mask, pml_size_points, discretized_sensor_coords, sim_transducer, sim_sensor)
         
@@ -317,6 +332,7 @@ class Simulation:
             if index - transducer.get_num_rays() < 0:
                 affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
                 steering_angle = transducer.steering_angles[index]
+                self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0])
                 sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                 break
             else:
