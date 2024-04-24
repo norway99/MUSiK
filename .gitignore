@@ -26,3 +26,4 @@ musik/test_experiment*
 *.npy
 *.npz
 *simulations
+*baby*
