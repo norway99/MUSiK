@@ -60,6 +60,10 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             print('loading sensor without transducer set, mind the aperture type!')
         if sensor.sensor_coords is not None:
             sensor.sensor_coords = np.array(sensor.sensor_coords)
+        if sensor.element_lookup is not None:
+            sensor.element_lookup = np.array(sensor.element_lookup)
+        if sensor.sensors_per_el is not None:
+            sensor.sensors_per_el = np.array(sensor.sensors_per_el)
         return sensor
     
 
@@ -67,6 +71,8 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         save_dict = {}
         save_dict['aperture_type'] = self.aperture_type
         save_dict['sensor_coords'] = self.to_list()
+        save_dict['element_lookup'] = np.ndarray.tolist(self.element_lookup)
+        save_dict['sensors_per_el'] = np.ndarray.tolist(self.sensors_per_el)
         utils.dict_to_json(save_dict, savefile)
         
 
