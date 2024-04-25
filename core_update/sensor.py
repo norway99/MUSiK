@@ -8,7 +8,7 @@ import geometry
 class Sensor: # sensor points are represented in global coordinate space for this class
 
     def __init__(self,
-                 aperture_type = None, # single_transducer, extended, microphones 
+                 aperture_type = None, # transmit_as_receive, extended, microphones 
                  transducer_set = None,
                  sensor_coords = None
                  ):
@@ -89,9 +89,9 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         
         
     # takes in a list of sensor coords (global coordinate system), transforms to match reference of transmit transducer, and discretizes
-    def make_sensor_mask(self, not_transducer, computational_grid_shape, grid_voxel_size, transmit_transform = None):
+    def make_sensor_mask(self, sim_transducer, not_transducer, computational_grid_shape, grid_voxel_size, transmit_transform = None):
         #if self.sensor_coords is None:
-        if self.aperture_type == "single_transducer":
+        if type(sim_transducer).__name__ == "Focused" && self.aperture_type == "transmit_as_receive":
             sensor_mask = not_transducer.indexed_mask
             sensor_mask = np.where(sensor_mask > 0, 1, sensor_mask)
             discretized_sensor_coords = None
