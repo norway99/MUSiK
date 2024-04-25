@@ -144,8 +144,10 @@ class Experiment:
         else:
             experiment.indices = experiment_dict['indices']
             experiment.indices = experiment.indices_to_run(experiment.indices)
-        if len(experiment.results) != len(experiment):
-            print(f'Number of simulation results ({len(experiment.results)}) does not match the expected number of simulation results ({len(experiment)}), are you sure the simulation finished running?')
+        if len(experiment.results) < len(experiment):
+            print(f'Number of simulation results ({len(experiment.results)}) is less than the expected number of simulation results ({len(experiment)}), are you sure the simulation finished running?')
+        elif len(experiment.results) > len(experiment):
+            print(f'Number of simulation results ({len(experiment.results)}) is greater than the expected number of simulation results ({len(experiment)}), did the experiment parameters change since running?')
         return experiment
     
     
@@ -154,7 +156,7 @@ class Experiment:
         if indices is None:
             indices = self.indices
         if len(indices) == 0:
-            assert False, 'Found no more simulations to run.'
+            return None
         return np.array_split(np.array(indices), self.nodes)
     
     
@@ -192,26 +194,29 @@ class Experiment:
                     for index in indices:
                         self.simulate(index)
                 else:
-                    print('running with {} workers\n'.format(self.workers))
-                    # with multiprocessing.Manager() as manager:
-                    queue = multiprocessing.Queue()
-                    
-                    if self.workers > 2:
-                        simulations = np.array_split(self.subdivide()[node], self.workers - 1)
-                        prep_procs = []
-                        for i in range(self.workers - 1):
-                            prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry)))
-                            prep_procs[i].start()
+                    subdivisions = self.subdivide()
+                    if subdivisions is None:
+                        print('Found no more simulations to run.')
                     else:
-                        prep_procs = [multiprocessing.Process(name='prep', target=self.prep_worker, args=(queue, self.subdivide()[node], dry)),]
-                        prep_procs[0].start()
+                        print('running with {} workers\n'.format(self.workers))
+                        queue = multiprocessing.Queue()
                         
-                    run_proc = multiprocessing.Process(name='run', target=self.run_worker, args=(queue, self.subdivide()[node],))
-                    run_proc.start()
-                    
-                    for prep_proc in prep_procs:
-                        prep_proc.join()
-                    run_proc.join()
+                        if self.workers > 2:
+                            simulations = np.array_split(subdivisions[node], self.workers - 1)
+                            prep_procs = []
+                            for i in range(self.workers - 1):
+                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry)))
+                                prep_procs[i].start()
+                        else:
+                            prep_procs = [multiprocessing.Process(name='prep', target=self.prep_worker, args=(queue, subdivisions[node], dry)),]
+                            prep_procs[0].start()
+                            
+                        run_proc = multiprocessing.Process(name='run', target=self.run_worker, args=(queue, subdivisions[node],))
+                        run_proc.start()
+                        
+                        for prep_proc in prep_procs:
+                            prep_proc.join()
+                        run_proc.join()
     
                 
     def prep_worker(self, queue, indices, dry=False):
@@ -232,7 +237,7 @@ class Experiment:
         count = 0
         while True:
             if queue.qsize() == 0:
-                time.sleep(5)
+                time.sleep(1)
                 continue
             simulation = queue.get()
             simulation.run()

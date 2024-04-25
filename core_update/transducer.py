@@ -193,7 +193,7 @@ class Transducer:
             else:
                 plt.show()
                 
-    def plot_fov(self, ax=None, transform=None, save=False, save_path=None, scale=0.003, length=0.005, color='b'):
+    def plot_fov(self, ax=None, transform=None, save=False, save_path=None, scale=0.003, length=0.025, color='b'):
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
@@ -269,7 +269,6 @@ class Transducer:
         azimuth = self.width / kgrid.dy
         elevation = self.height / kgrid.dz    
         
-        print(f'element_width, kerf, azimuth, elevation: {element_width, kerf, azimuth, elevation}')    
         return element_width, kerf, azimuth, elevation
         
         
@@ -288,7 +287,7 @@ class Transducer:
                 kgrid, num_elements, element_width, elevation, kerf,
                 position, self.radius)
         
-        print(f'self.elements, element_width, elevation, kerf: {num_elements, element_width, elevation, kerf}')
+        # print(f'self.elements, element_width, elevation, kerf: {num_elements, element_width, elevation, kerf}')
         
         not_transducer = kwave.ktransducer.NotATransducer(transducer = my_transducer,
                                             kgrid = kgrid,
