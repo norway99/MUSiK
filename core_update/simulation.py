@@ -86,7 +86,7 @@ class SimProperties:
         self.voxel_size  = self.__optimize_voxel_size(frequency=frequency, sos=sos)
         self.matrix_size = self.calc_matrix_size(self.grid_size, self.voxel_size)
         self.bounds      = self.calc_bounding_vertices(self.matrix_size, self.PML_size, self.voxel_size)
-        print(f'optimizing simulation parameters: [voxel_size ({self.voxel_size[0]}m)^3], [duration {self.t_end}s], [matrix_size {self.matrix_size}], [functional_size {np.array(self.matrix_size) - 2 * np.array(self.PML_size)}]')
+        # print(f'optimizing simulation parameters: [voxel_size ({self.voxel_size[0]}m)^3], [duration {self.t_end}s], [matrix_size {self.matrix_size}], [functional_size {np.array(self.matrix_size) - 2 * np.array(self.PML_size)}]')
     
     
     def __optimize_voxel_size(self, frequency=4e6, sos=1540, lambda_factor=1):

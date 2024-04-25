@@ -8,6 +8,7 @@ import sys
 import multiprocessing
 from scipy.interpolate import LinearNDInterpolator
 sys.path.append('../utils')
+import time
 
 import utils
 import geometry
@@ -79,10 +80,6 @@ class DAS(Reconstruction):
     def __time_to_coord(self, t, transform):
         dists = t * self.phantom.baseline[0] / 2
         
-        #------------------------
-        dists = dists * 0.92
-        #------------------------
-        
         dists = np.pad(dists[...,None], ((0,0),(0,2)), mode='constant', constant_values=0)
         coords = transform.apply_to_points(dists)
         return coords
@@ -111,8 +108,8 @@ class DAS(Reconstruction):
     def process_line(self, index, transducer, transform,):
         processed = transducer.preprocess(transducer.make_scan_line(self.results[index][1]), self.results[index][0], self.sim_properties)
         coords = self.__time_to_coord(self.results[index][0], transform)
-        time = self.results[index][0]
-        return time, coords, processed
+        times = self.results[index][0]
+        return times, coords, processed
 
 
     def preprocess_data(self, workers=8):
@@ -123,7 +120,7 @@ class DAS(Reconstruction):
         indices = []
         transducers = []
         transforms = []
-        for index in tqdm.tqdm(range(len(self.results))):
+        for index in range(len(self.results)):
             if index > running_index_list[transducer_count] - 1:
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
@@ -134,15 +131,24 @@ class DAS(Reconstruction):
             transforms.append(transform)
         
         results = []
-        with multiprocessing.Pool(workers) as p:
-            results.append(p.starmap(self.process_line, zip(indices, transducers, transforms)))
-        time = [r[0] for r in results[0]]
-        coords = [r[1] for r in results[0]]
-        processed = [r[2] for r in results[0]]
-        return time, coords, processed
+        inputs = list(zip(indices, transducers, transforms))
+        starttime = time.time()
+        
+        if workers > 1:
+            with multiprocessing.Pool(8) as p:
+                results = p.starmap(self.process_line, tqdm.tqdm(inputs, total=len(indices)))
+        else:
+            for input_data in inputs:
+                results.append(self.process_line(input_data[0],input_data[1],input_data[2]))
+        
+        print(f'multiproc time {time.time() - starttime}')
+        times = [r[0] for r in results]
+        coords = [r[1] for r in results]
+        processed = [r[2] for r in results]
+        return times, coords, processed
     
         
-    def plot_scatter(self, scale=5000):
+    def plot_scatter(self, scale=5000, workers=1):
        
         colorme = lambda x: (     [1,0,0] if x % 7 == 0 
                              else [0,1,0] if x % 7 == 1 
@@ -152,34 +158,34 @@ class DAS(Reconstruction):
                              else [0,1,1] if x % 7 == 5 
                              else [1,1,1])
         
-        time, coords, processed = self.preprocess_data()
+        times, coords, processed = self.preprocess_data(workers=workers)
         coords = np.stack(coords, axis=0)
         processed = np.stack(processed, axis=0)
-        time = np.stack(time, axis=0)
+        times = np.stack(times, axis=0)
         
         transducer_lens = [t.get_num_rays() for t in self.transducer_set.transducers]
-        base_color = np.array([colorme(i) for i in range(len(transducer_lens)) for j in range(transducer_lens[i] * len(time[i]))])
+        base_color = np.array([colorme(i) for i in range(len(transducer_lens)) for j in range(transducer_lens[i] * len(times[i]))])
         
         fig, ax = plt.subplots(1,1, figsize=(8,8))
         
         coords = np.reshape(coords, (-1,3))
         processed = np.reshape(processed, (-1,))
-        time = np.reshape(time, (-1,))
+        times = np.reshape(times, (-1,))
         base_color = np.reshape(base_color, (-1,3))
         intensity = np.clip(processed, 0, scale)/scale
         
         colors = np.array([1,1,1]) - np.broadcast_to(intensity[:,None], base_color.shape) * base_color
         
-        ax.scatter(coords[:,0], coords[:,1], c=colors, s=time*100000, alpha = 0.05)
+        ax.scatter(coords[:,0], coords[:,1], c=colors, s=times*100000, alpha = 0.002)
         
         ax.set_aspect('equal')
         
 
-    def get_image(self, bounds=None, matsize=256, dimensions=3, downsample = 1):
+    def get_image(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8):
         assert dimensions in [2,3], print("Image can be 2 or 3 dimensional")
         assert (downsample > 0 and downsample <= 1), print("Downsample must be a float on (0,1]")
         
-        time, coords, processed = self.preprocess_data()
+        times, coords, processed = self.preprocess_data(workers=workers)
         coords = np.stack(coords, axis=0)
         processed = np.stack(processed, axis=0)
 

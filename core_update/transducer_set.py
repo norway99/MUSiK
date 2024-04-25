@@ -210,7 +210,7 @@ class TransducerSet:
             ax.grid(False)
         cmap = plt.get_cmap('tab20b')
         for i in range(len(self.transducers)):
-            self.transducers[i].plot_fov(ax=ax, transform=self.poses[i], length=0.005, color=cmap(i/len(self.transducers)))
+            self.transducers[i].plot_fov(ax=ax, transform=self.poses[i], length=0.02, color=cmap(i/len(self.transducers)))
         if ax is None:
             if save:
                 plt.savefig(save_path)
