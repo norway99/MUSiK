@@ -89,7 +89,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         
         
     # takes in a list of sensor coords (global coordinate system), transforms to match reference of transmit transducer, and discretizes
-    def make_sensor_mask(self, sim_transducer, not_transducer, computational_grid_shape, grid_voxel_size, transmit_transform = None):
+    def make_sensor_mask(self, sim_transducer, not_transducer, grid_voxel_size, transmit_transform = None):
         #if self.sensor_coords is None:
         if type(sim_transducer).__name__ == "Focused" and self.aperture_type == "transmit_as_receive":
             sensor_mask = not_transducer.indexed_mask
@@ -103,27 +103,25 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             # transformed_sensor_coords = np.divide(transformed_sensor_coords, phantom.voxel_dims)
             transformed_sensor_coords = np.divide(transformed_sensor_coords, grid_voxel_size)
             
-            mask_centroid = np.array(computational_grid_shape)/2
+            mask_centroid = np.array(sensor_mask.shape)/2
             mask_centroid[0] = 0
             recenter_matrix = np.broadcast_to(mask_centroid, transformed_sensor_coords.shape)
             transformed_sensor_coords = transformed_sensor_coords + recenter_matrix
             discretized_sensor_coords = np.ndarray.astype(np.round(transformed_sensor_coords), int)
-
             for coord in discretized_sensor_coords:
                 if np.prod(np.where(coord >= 0, 1, 0)) == 0: 
                     continue
                 if np.prod(np.where(coord < sensor_mask.shape, 1, 0)) == 0:
                     continue
                 sensor_mask[coord[0], coord[1], coord[2]] = 1
-            print(f'sum of sensor_mask({np.sum(sensor_mask)})')
         return sensor_mask, discretized_sensor_coords
 
 
     # takes sensor data and aggregates voxel-level data into element-level data
     def voxel_to_element(self, sim_properties, transmit, discretized_sensor_coords, sensor_data):
-        computational_grid_size = (np.array(sim_properties.grid_size) - 2 * np.array(sim_properties.PML_size))
+        computational_grid_size = (np.array(sim_properties.matrix_size) - 2 * np.array(sim_properties.PML_size))
         data = sensor_data['p'].T
-        if self.aperture_type == "single_transducer":
+        if self.aperture_type == "transmit_as_receive":
             element_signals = transmit.not_transducer.combine_sensor_data(data)
         else:            
             # omissions

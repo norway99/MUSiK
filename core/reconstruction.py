@@ -12,6 +12,7 @@ import time
 
 import utils
 import geometry
+from .transducer import Focused, Planewave, Transducer
 from .phantom import Phantom
 from .transducer_set import TransducerSet
 from .simulation import Simulation, SimProperties
@@ -243,7 +244,7 @@ class Compounding(Reconstruction):
     def __init__(self,
                  experiment = None):
         for transducer in experiment.transducer_set.transducers:
-            if not isinstance(tranducer, Planewave):
+            if not isinstance(transducer, Planewave):
                 print("Warning: attempting to instantiate Compounding reconstruction class but transducer set does not exclusively contain plane-wave tranducers.")
                 break
         super().__init__(experiment)

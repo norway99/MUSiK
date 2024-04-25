@@ -161,13 +161,13 @@ class Experiment:
     
     
     # run simulations by node
-    def run(self, node=None, dry=False):
+    def run(self, node=None, dry=False, repeat=False):
         assert os.path.exists(self.simulation_path), 'Attempting to run simulations but an experiment directory does not exist. Please save the experiment (my_experiment.save()) before running simulations.'
         
         if dry:
             indices = self.indices_to_run(repeat=True)
         else:
-            indices = self.indices_to_run()
+            indices = self.indices_to_run(repeat=repeat)
         
         if node is None:
             if self.nodes is None:

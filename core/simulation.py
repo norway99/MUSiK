@@ -259,7 +259,7 @@ class Simulation:
         medium.sound_speed = sound_speed_map
         medium.density = density_map
         
-        sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(sim_transducer, not_transducer, self.sim_properties.grid_size, self.sim_properties.voxel_size, affine)
+        sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(sim_transducer, not_transducer, self.sim_properties.voxel_size, affine)
             
         return (medium, kgrid, not_transducer, sensor_mask, pml_size_points, discretized_sensor_coords, sim_transducer, sim_sensor)
         
@@ -298,9 +298,9 @@ class Simulation:
                 execution_options=kwave.options.simulation_execution_options.SimulationExecutionOptions(is_gpu_simulation=self.gpu)
             )
             
-
+            print(sensor_data)
             utils.save_array(sensor_data['p'].T, 'sensor_data_woo', compression=False)
-            utils.save_array(discretized_sensor_coords, 'disc_sensor_coords_woo', compression=False)
+            # utils.save_array(discretized_sensor_coords, 'disc_sensor_coords_woo', compression=False)
             
             # remove temporary files
             tmppath = tempfile.gettempdir()
