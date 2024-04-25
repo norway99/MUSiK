@@ -115,7 +115,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
                 if np.prod(np.where(coord < sensor_mask.shape, 1, 0)) == 0:
                     continue
                 sensor_mask[coord[0], coord[1], coord[2]] = 1
-            print(np.sum(sensor_mask))
+            print(f'sum of sensor_mask({np.sum(sensor_mask)})')
         return sensor_mask, discretized_sensor_coords
 
 
