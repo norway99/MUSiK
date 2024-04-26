@@ -56,3 +56,16 @@ def save_mrc(array, filepath):
     with mrcfile.new(filepath, overwrite=True) as mrc:
         mrc.set_data(array.astype(np.float32))
 
+def generate_distance_matrix(size, center=None) -> np.array:
+    if center == None:
+        center = [size[dim]//2 for dim in range(len(size))]
+    else:
+        assert len(center) == len(size)
+        
+    dist_arrays = []
+    for dim in range(len(size)):
+        dist_arrays.append(np.arange(size[dim]) - center[dim])
+
+    coord_arrays = np.meshgrid(*dist_arrays, indexing='ij')
+    dist = np.sqrt(sum([coord**2 for coord in coord_arrays]))
+    return dist

@@ -163,6 +163,7 @@ class Simulation:
                  index           = None,
                  gpu             = True,
                  dry             = False,
+                 additional_keys = [],
                  ):
         
         self.sim_properties = sim_properties
@@ -174,6 +175,8 @@ class Simulation:
         self.gpu = gpu
         self.dry = dry
         self.prepped_simulation = None
+        self.additional_keys = additional_keys
+        self.record_pressure_field = len(self.additional_keys)>0
         
         
     def prep(self,):
@@ -217,8 +220,9 @@ class Simulation:
         if not dry:
             start_time = time.time()
             # print(f'running simulation index:       {index:11d}')
-            signals, time_array = self.__run_simulation(self.prepped_simulation)
+            time_array, signals, other_signals = self.__run_simulation(self.prepped_simulation, self.additional_keys)
             self.__write_signal(index, signals, time_array)
+            self.__write_other_signals(index, other_signals)
             print('simulation {:6d} completed in {:5.2f} seconds'.format(index, round(time.time() - start_time, 3)))
             return signals, time_array
     
@@ -259,13 +263,19 @@ class Simulation:
         medium.sound_speed = sound_speed_map
         medium.density = density_map
         
-        sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(sim_transducer, not_transducer, self.sim_properties.voxel_size, affine)
+        # sensor mask
+        if self.record_pressure_field:
+            sensor_mask, discretized_sensor_coords = np.zeros(grid_size_points), None
+            sensor_mask[:,:,sensor_mask.shape[2]//2] = 1
+            print(sensor_mask.shape)
+        else:
+            sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(sim_transducer, not_transducer, self.sim_properties.voxel_size, affine)
             
         return (medium, kgrid, not_transducer, sensor_mask, pml_size_points, discretized_sensor_coords, sim_transducer, sim_sensor)
         
         
     # given the simulation properties, phantom, and transducer, create the simulation file for the cuda binary and run
-    def __run_simulation(self, prepped_simulation):
+    def __run_simulation(self, prepped_simulation, additional_keys):
         
         medium, kgrid, not_transducer, sensor_mask, pml_size_points, discretized_sensor_coords, sim_transducer, sim_sensor = prepped_simulation
         
@@ -293,14 +303,10 @@ class Simulation:
                 medium=medium,
                 kgrid=kgrid,
                 source=not_transducer,
-                sensor=kwave.ksensor.kSensor(mask=sensor_mask),
+                sensor=kwave.ksensor.kSensor(mask=sensor_mask, record=list(set(["p"]+additional_keys))),
                 simulation_options=simulation_options,
                 execution_options=kwave.options.simulation_execution_options.SimulationExecutionOptions(is_gpu_simulation=self.gpu)
             )
-            
-            print(sensor_data)
-            utils.save_array(sensor_data['p'].T, 'sensor_data_woo', compression=False)
-            # utils.save_array(discretized_sensor_coords, 'disc_sensor_coords_woo', compression=False)
             
             # remove temporary files
             tmppath = tempfile.gettempdir()
@@ -309,15 +315,29 @@ class Simulation:
                 input_files = sorted(input_files, key=os.path.getmtime)
                 for input_file in input_files[:1]:
                     os.remove(input_file)
-                        
-            element_signals = sim_sensor.voxel_to_element(self.sim_properties, sim_transducer, discretized_sensor_coords, sensor_data)
+            
+            if self.record_pressure_field:
+                signals = sensor_data['p'].T
+                other_signals = []
+                for other_key in additional_keys:
+                    other_signals.append(sensor_data[other_key])
+            else:
+                signals = sim_sensor.voxel_to_element(self.sim_properties, sim_transducer, discretized_sensor_coords, sensor_data)
+                other_signals = None
         
-        return element_signals, kgrid.t_array
+        return kgrid.t_array, signals, other_signals
         
     
-    def __write_signal(self, index, signal, time_array):
-        utils.save_array(np.concatenate((time_array, signal), axis=0), os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}'), compression=False)
+    def __write_signal(self, index, signals, time_array):
+        if self.record_pressure_field:
+            utils.save_array(np.concatenate((time_array, signals), axis=0), os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}'), compression=False)
+        else:
+            utils.save_array(np.concatenate((time_array, signals), axis=0), os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}'), compression=False)
     
+    def __write_other_signals(self, index, other_signals):
+        if other_signals is not None:
+            for key, signal in enumerate(other_signals):
+                utils.save_array(signal, os.path.join(self.simulation_path, f'results/signal_key{str(key).zfill(2)}_{str(index).zfill(6)}'), compression=False)
     
     def save(self, filepath):
         print('saving and loading simulations deemed unnecessary, not implemented')

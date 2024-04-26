@@ -251,11 +251,11 @@ class Compounding(Reconstruction):
 
     def __get_element_centroids(self): # in global coordinates
         sensor_coords = self.sensor.sensor_coords
-        sensors_per_el = self.sensors_per_el
+        sensors_per_el = self.sensor.sensors_per_el
         element_centroids = np.zeros((sensors_per_el.size, 3))
         pos = 0
         for entry in range(sensors_per_el.size):
-            element_centroids[entry] = np.mean(sensor_coords[pos:pos+sensors_per_el[entry], :], axis = 0)
+            element_centroids[entry] = np.mean(sensor_coords[int(pos):int(pos+sensors_per_el[entry]), :], axis = 0)
             pos += sensors_per_el[entry]
         return element_centroids
     
@@ -264,24 +264,28 @@ class Compounding(Reconstruction):
         matrix_dims = self.phantom.matrix_dims
         voxel_dims = self.phantom.voxel_dims
         c0 = self.phantom.baseline[0]
-        dt = self.kgrid.dt # not the correct way to access the kgrid
+        # dt = self.kgrid.dt # not the correct way to access the kgrid
+        # ------------------------------------------------------------------------------------------------------------
+        # fix this sometime
+        dt = 3.75e-8
+        # ------------------------------------------------------------------------------------------------------------
         
         # need to choose lateral, axial, and elevation resolutions
         
-        resolution = max(dt*c0, 2*c0/self.transducer_set.get_lowest_frequency()) # make sure this works
+        resolution = max(dt*c0, 2*c0/self.transducer_set.get_lowest_frequency()) / 2 # make sure this works
         
-        x = np.linspace(-matrix_dims[0]*voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2, retstep=resolution[0])
-        y = np.linspace(-matrix_dims[1]*voxel_dims[1]/2, matrix_dims[1]*voxel_dims[1]/2, retstep=resolution[1])
-        z = np.linspace(-matrix_dims[2]*voxel_dims[2]/2, matrix_dims[2]*voxel_dims[2]/2, retstep=resolution[2])
+        x = np.arange(-matrix_dims[0]*voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2, step=resolution)
+        y = np.arange(-matrix_dims[1]*voxel_dims[1]/2, matrix_dims[1]*voxel_dims[1]/2, step=resolution)
+        z = np.arange(-matrix_dims[2]*voxel_dims[2]/2, matrix_dims[2]*voxel_dims[2]/2, step=resolution)
         
-        xxx, yyy, zzz = np.meshgrid(x, y, z)
-
-        image_matrix = np.zeros(len(x), len(y), len(z))
+        image_matrix = np.zeros((len(x), len(y), len(z)))
         
         # note that origin is at center of the 3d image in global coordinate system
         
         element_centroids = self.__get_element_centroids()
         transducer_count = 0
+        transducer, transducer_transform = self.transducer_set[transducer_count]
+        running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
         for index in tqdm.tqdm(range(len(self.results))):
             if index > running_index_list[transducer_count] - 1:
                 transducer_count += 1
@@ -289,19 +293,27 @@ class Compounding(Reconstruction):
                 steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
             preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties)
+            preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
             
             transmit_position = transducer_transform.translation
-            transmit_rotation = transducer_transform.rotation
-            nl_transform = Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
+            transmit_rotation = transducer_transform.rotation.as_euler('ZYX')
+            nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
             normal = nl_transform.apply_to_point((1, 0, 0)) # normal vector to plane wave shot
 
-            transmit_dists = np.absolute(np.dot(np.array([xxx-transmit_position[0], yyy-transmit_position[1], zzz-transmit_position[2]]), normal))
-
+            # transmit_dists = np.absolute(np.dot(np.array([xxx-transmit_position[0], yyy-transmit_position[1], zzz-transmit_position[2]]), normal))
+            xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2])
+            distances = np.stack([xxx, yyy, zzz], axis=0)
+            
+            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
+            
             for centroid, rf_series in zip(element_centroids, preprocessed_data):
-                element_dists = np.sqrt((xxx-centroid[0])**2 + (yyy-centroid[1])**2 + (zzz-centroid[2])**2)
-                travel_times = (transmit_dists + element_dists)/c0
+                xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2])
+                element_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
+                travel_times = ((transmit_dists + element_dists)/c0/dt).astype(np.int32)
+                # print(travel_times)
 
-                #parallelize this (with multithreading?)
+                # image_matrix += rf_series[travel_times]
+                
                 for i in range(len(x)):
                     for j in range(len(y)):
                         for k in range(len(z)):

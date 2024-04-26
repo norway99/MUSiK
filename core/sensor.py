@@ -158,8 +158,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             for i, points in enumerate(list(self.sensors_per_el)):
                 element_signals[i] = np.mean(sensor_point_signals[int(count) : int(count + points)], axis=0)
                 count += points
-                
-                
+        
         return element_signals
 
 

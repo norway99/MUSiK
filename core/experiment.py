@@ -23,7 +23,8 @@ class Results:
     def __init__(self,
                  results_path = None,
                  ):
-        self.result_paths = sorted(glob.glob(results_path+'/*'))
+        self.result_paths = sorted(glob.glob(results_path+'/signal*.np?'))
+        self.other_signal_paths = sorted(glob.glob(results_path+'/other_signal*.np?'))
         self.length = len(self.result_paths)
         if self.length == 0:
             self.result_shape = None
@@ -39,6 +40,9 @@ class Results:
     def __getitem__(self, index):
         search_index = self.indices().index(index)
         data = utils.load_array(self.result_paths[search_index])
+        if len(self.other_signal_paths):
+            other_data = utils.load_array(self.other_signal_paths[search_index])
+            return data[0], data[1:], other_data
         return data[0], data[1:]
     
     
@@ -63,6 +67,7 @@ class Experiment:
                  indices         = None,
                  gpu             = True,
                  workers         = 2,
+                 additional_keys = [],
                  ):
         if simulation_path is None:
             simulation_path = os.path.join(os.getcwd(), 'experiment')
@@ -83,8 +88,9 @@ class Experiment:
         
         os.makedirs(os.path.join(simulation_path, f'results'), exist_ok=True)
         self.add_results()
-        
         self.indices = self.indices_to_run(indices)
+        self.additional_keys = self.check_added_keys(additional_keys)
+        print(self.additional_keys)
         
         
     def __len__(self):
@@ -102,7 +108,7 @@ class Experiment:
         if (self.results is None or len(self.results) == 0) or repeat:
             return indices
         else:
-            return sorted(list(set(indices) - set(self.results.indices())))
+            return sorted(list(set(indices) - set(self.results.indices())))        
     
     
     # save experiment
@@ -120,6 +126,7 @@ class Experiment:
             'nodes': self.nodes,
             'gpu': self.gpu,
             'workers': self.workers,
+            'additional_keys': self.additional_keys,
         }
         utils.dict_to_json(dictionary, os.path.join(filepath, f'experiment.json'))
         
@@ -138,6 +145,7 @@ class Experiment:
         experiment.nodes = experiment_dict['nodes']
         experiment.gpu = experiment_dict['gpu']
         experiment.workers = experiment_dict['workers']
+        experiment.additional_keys = experiment_dict['additional_keys']
         experiment.add_results()
         if experiment_dict['indices'] is None:
             experiment.indices = experiment.indices_to_run()
@@ -173,10 +181,10 @@ class Experiment:
             if self.nodes is None:
                 self.nodes = 1
             if dry:
-                self.run(0, dry=dry)
+                self.run(0, dry=dry, repeat=repeat)
             else:
                 for node in range(self.nodes):
-                    self.run(node, dry=dry)
+                    self.run(node, dry=dry, repeat=repeat)
         else:
             if dry:
                 # if self.workers is None:
@@ -225,7 +233,15 @@ class Experiment:
             if queue.qsize() > 3:
                 time.sleep(5)
                 continue
-            simulation = Simulation(self.sim_properties, self.phantom, self.transducer_set, self.sensor, simulation_path=self.simulation_path, index=indices[count], gpu=self.gpu, dry=dry)
+            simulation = Simulation(self.sim_properties, 
+                                    self.phantom, 
+                                    self.transducer_set, 
+                                    self.sensor, 
+                                    simulation_path=self.simulation_path, 
+                                    index=indices[count], 
+                                    gpu=self.gpu, 
+                                    dry=dry, 
+                                    additional_keys=self.additional_keys)
             simulation.prep()
             queue.put(simulation)
             count += 1
@@ -247,7 +263,15 @@ class Experiment:
         
                     
     def simulate(self, index, dry=False):
-        simulation = Simulation(self.sim_properties, self.phantom, self.transducer_set, self.sensor, simulation_path=self.simulation_path, index=index, gpu=self.gpu, dry=dry)
+        simulation = Simulation(self.sim_properties, 
+                                self.phantom, 
+                                self.transducer_set, 
+                                self.sensor, 
+                                simulation_path=self.simulation_path, 
+                                index=index, 
+                                gpu=self.gpu, 
+                                dry=dry, 
+                                additional_keys=self.additional_keys)
         simulation.prep()
         simulation.run()
         
@@ -257,5 +281,40 @@ class Experiment:
         
         
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
-        simulation = Simulation(self.sim_properties, self.phantom, self.transducer_set, self.sensor, simulation_path=self.simulation_path, index=index, gpu=self.gpu)
+        simulation = Simulation(self.sim_properties, 
+                                self.phantom, 
+                                self.transducer_set, 
+                                self.sensor, 
+                                simulation_path=self.simulation_path, 
+                                index=index, 
+                                gpu=self.gpu)
         simulation.plot_medium_path(index, ax=ax, save=save, save_path=save_path, cmap=cmap)
+
+
+    def check_added_keys(self, additional_keys):
+        valid_keys = []
+        allowed_keys = [
+            "p",
+            "p_max",
+            "p_min",
+            "p_rms",
+            "p_max_all",
+            "p_min_all",
+            "p_final",
+            "u",
+            "u_max",
+            "u_min",
+            "u_rms",
+            "u_max_all",
+            "u_min_all",
+            "u_final",
+            "u_non_staggered",
+            "I",
+            "I_avg",
+        ]
+        for key in additional_keys:
+            if key in allowed_keys:
+                valid_keys.append(key)
+            else:
+                print(f'warning, requested flag "{key}" is not a valid flag, ignoring')
+        return list(set(valid_keys))
