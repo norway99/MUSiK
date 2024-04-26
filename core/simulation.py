@@ -263,13 +263,7 @@ class Simulation:
         medium.sound_speed = sound_speed_map
         medium.density = density_map
         
-        # sensor mask
-        if self.record_pressure_field:
-            sensor_mask, discretized_sensor_coords = np.zeros(grid_size_points), None
-            sensor_mask[:,:,sensor_mask.shape[2]//2] = 1
-            print(sensor_mask.shape)
-        else:
-            sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(sim_transducer, not_transducer, self.sim_properties.voxel_size, affine)
+        sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(sim_transducer, not_transducer, self.sim_properties.voxel_size, affine)
             
         return (medium, kgrid, not_transducer, sensor_mask, pml_size_points, discretized_sensor_coords, sim_transducer, sim_sensor)
         

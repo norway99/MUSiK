@@ -8,7 +8,7 @@ import geometry
 class Sensor: # sensor points are represented in global coordinate space for this class
 
     def __init__(self,
-                 aperture_type = None, # transmit_as_receive, extended, microphones 
+                 sensor_type = None, # transmit_as_receive, extended_aperture, pressure_field, microphone 
                  transducer_set = None,
                  sensor_coords = None
                  ):
@@ -20,7 +20,9 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             if sensor_coords is None:
                 raise Exception("Please supply sensor coordinates to use a microphone-style sensor mask")
             self.sensor_coords = sensor_coords
-        elif aperture_type is not None:
+        elif aperture_type is None or aperture_type == "pressure_field":
+            self.sensor_coords = None
+        else
             if transducer_set is None:
                 raise Exception("Please supply a transducer set")
             all_sensor_coords = []
@@ -43,9 +45,6 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             self.element_lookup = np.stack(all_element_lookup, axis=0).flatten()
             self.sensor_coords = np.stack(all_sensor_coords, axis=1).reshape(-1,3)
             self.sensors_per_el = np.stack(sensors_per_el, axis=0).flatten()
-        else: 
-            self.sensor_coords = None
-        
             
 
     @classmethod
@@ -90,30 +89,33 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         
     # takes in a list of sensor coords (global coordinate system), transforms to match reference of transmit transducer, and discretizes
     def make_sensor_mask(self, sim_transducer, not_transducer, grid_voxel_size, transmit_transform = None):
-        #if self.sensor_coords is None:
         if type(sim_transducer).__name__ == "Focused" and self.aperture_type == "transmit_as_receive":
             sensor_mask = not_transducer.indexed_mask
             sensor_mask = np.where(sensor_mask > 0, 1, sensor_mask)
             discretized_sensor_coords = None
         else:
             sensor_mask = np.zeros(not_transducer.indexed_mask.shape)
-            if transmit_transform is None:
-                raise Exception("Please supply a transmit transducer affine transformation")
-            transformed_sensor_coords = transmit_transform.apply_to_points(self.sensor_coords, inverse=True)
-            # transformed_sensor_coords = np.divide(transformed_sensor_coords, phantom.voxel_dims)
-            transformed_sensor_coords = np.divide(transformed_sensor_coords, grid_voxel_size)
-            
-            mask_centroid = np.array(sensor_mask.shape)/2
-            mask_centroid[0] = 0
-            recenter_matrix = np.broadcast_to(mask_centroid, transformed_sensor_coords.shape)
-            transformed_sensor_coords = transformed_sensor_coords + recenter_matrix
-            discretized_sensor_coords = np.ndarray.astype(np.round(transformed_sensor_coords), int)
-            for coord in discretized_sensor_coords:
-                if np.prod(np.where(coord >= 0, 1, 0)) == 0: 
-                    continue
-                if np.prod(np.where(coord < sensor_mask.shape, 1, 0)) == 0:
-                    continue
-                sensor_mask[coord[0], coord[1], coord[2]] = 1
+            if self.aperture_type = "pressure_field":
+                sensor_mask[:, :, sensor_mask.shape[2]//2] = 1
+                discretized_sensor_coords = None
+            else:
+                if transmit_transform is None:
+                    raise Exception("Please supply a transmit transducer affine transformation")
+                transformed_sensor_coords = transmit_transform.apply_to_points(self.sensor_coords, inverse=True)
+                # transformed_sensor_coords = np.divide(transformed_sensor_coords, phantom.voxel_dims)
+                transformed_sensor_coords = np.divide(transformed_sensor_coords, grid_voxel_size)
+                
+                mask_centroid = np.array(sensor_mask.shape)/2
+                mask_centroid[0] = 0
+                recenter_matrix = np.broadcast_to(mask_centroid, transformed_sensor_coords.shape)
+                transformed_sensor_coords = transformed_sensor_coords + recenter_matrix
+                discretized_sensor_coords = np.ndarray.astype(np.round(transformed_sensor_coords), int)
+                for coord in discretized_sensor_coords:
+                    if np.prod(np.where(coord >= 0, 1, 0)) == 0: 
+                        continue
+                    if np.prod(np.where(coord < sensor_mask.shape, 1, 0)) == 0:
+                        continue
+                    sensor_mask[coord[0], coord[1], coord[2]] = 1
         return sensor_mask, discretized_sensor_coords
 
 
