@@ -85,11 +85,13 @@ class Experiment:
         if workers is not None and workers > 3:
             print('workers specifies the number of simultaneous simulations running on a single gpu node, setting workers higher than 3 will likely use more RAM without decreasing overall runtime')
         self.workers = workers
-        
+
         os.makedirs(os.path.join(simulation_path, f'results'), exist_ok=True)
         self.add_results()
         self.indices = self.indices_to_run(indices)
         self.additional_keys = self.check_added_keys(additional_keys)
+        if sim.sensor is not None and sim.sensor.aperture_type == "pressure_field" and "p_max" not in self.additional_keys:
+            self.additional_keys.append("p_max")
         print(self.additional_keys)
         
         
