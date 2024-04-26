@@ -23,8 +23,8 @@ class Results:
     def __init__(self,
                  results_path = None,
                  ):
-        self.result_paths = sorted(glob.glob(results_path+'/signal*.np?'))
-        self.other_signal_paths = sorted(glob.glob(results_path+'/other_signal*.np?'))
+        self.result_paths = sorted(glob.glob(results_path+'/signal_*.np?'))
+        self.other_signal_paths = sorted(glob.glob(results_path+'/key_signal*.np?'))
         self.length = len(self.result_paths)
         if self.length == 0:
             self.result_shape = None

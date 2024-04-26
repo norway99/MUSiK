@@ -10,7 +10,8 @@ class Sensor: # sensor points are represented in global coordinate space for thi
     def __init__(self,
                  sensor_type = None, # transmit_as_receive, extended_aperture, pressure_field, microphone 
                  transducer_set = None,
-                 sensor_coords = None
+                 sensor_coords = None,
+                 aperture_type = None,
                  ):
         self.aperture_type = aperture_type
         self.element_lookup = None
@@ -22,7 +23,9 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             self.sensor_coords = sensor_coords
         elif aperture_type is None or aperture_type == "pressure_field":
             self.sensor_coords = None
-        else
+            self.element_lookup = np.array([])
+            self.sensors_per_el = np.array([])
+        else:
             if transducer_set is None:
                 raise Exception("Please supply a transducer set")
             all_sensor_coords = []
@@ -95,7 +98,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             discretized_sensor_coords = None
         else:
             sensor_mask = np.zeros(not_transducer.indexed_mask.shape)
-            if self.aperture_type = "pressure_field":
+            if self.aperture_type == "pressure_field":
                 sensor_mask[:, :, sensor_mask.shape[2]//2] = 1
                 discretized_sensor_coords = None
             else:
@@ -120,7 +123,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
 
 
     # takes sensor data and aggregates voxel-level data into element-level data
-    def voxel_to_element(self, sim_properties, transmit, discretized_sensor_coords, sensor_data):
+    def voxel_to_element(self, sim_properties, transmit, discretized_sensor_coords, sensor_data, additional_keys):
         computational_grid_size = (np.array(sim_properties.matrix_size) - 2 * np.array(sim_properties.PML_size))
         data = sensor_data['p'].T
         if self.aperture_type == "transmit_as_receive":
@@ -155,13 +158,25 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             if self.aperture_type == "microphone":
                 return sensor_point_signals
                                 
-            element_signals = np.zeros([len(self.sensors_per_el), data.shape[1]])
+            signals = np.zeros([len(self.sensors_per_el), data.shape[1]])
             count = 0
             for i, points in enumerate(list(self.sensors_per_el)):
-                element_signals[i] = np.mean(sensor_point_signals[int(count) : int(count + points)], axis=0)
+                signals[i] = np.mean(sensor_point_signals[int(count) : int(count + points)], axis=0)
                 count += points
+                
+            other_signals = []
+            for other_key in additional_keys:
+                other_signals.append(sensor_data[other_key])
         
-        return element_signals
+        return signals, other_signals
+    
+    
+    def sort_pressure_field(self, sensor_data, additional_keys):
+        signals = sensor_data['p'].T
+        other_signals = []
+        for other_key in additional_keys:
+            other_signals.append(sensor_data[other_key])
+        return signals, other_signals
 
 
 

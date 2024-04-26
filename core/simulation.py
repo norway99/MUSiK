@@ -311,13 +311,9 @@ class Simulation:
                     os.remove(input_file)
             
             if self.record_pressure_field:
-                signals = sensor_data['p'].T
-                other_signals = []
-                for other_key in additional_keys:
-                    other_signals.append(sensor_data[other_key])
+                signals, other_signals = sim_sensor.sort_pressure_field(sensor_data, additional_keys)
             else:
-                signals = sim_sensor.voxel_to_element(self.sim_properties, sim_transducer, discretized_sensor_coords, sensor_data)
-                other_signals = None
+                signals, other_signals = sim_sensor.voxel_to_element(self.sim_properties, sim_transducer, discretized_sensor_coords, sensor_data, additional_keys)
         
         return kgrid.t_array, signals, other_signals
         
@@ -331,7 +327,7 @@ class Simulation:
     def __write_other_signals(self, index, other_signals):
         if other_signals is not None:
             for key, signal in enumerate(other_signals):
-                utils.save_array(signal, os.path.join(self.simulation_path, f'results/signal_key{str(key).zfill(2)}_{str(index).zfill(6)}'), compression=False)
+                utils.save_array(signal, os.path.join(self.simulation_path, f'results/key_signal_{str(key).zfill(2)}_{str(index).zfill(6)}'), compression=False)
     
     def save(self, filepath):
         print('saving and loading simulations deemed unnecessary, not implemented')
