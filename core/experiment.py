@@ -90,10 +90,9 @@ class Experiment:
         self.add_results()
         self.indices = self.indices_to_run(indices)
         self.additional_keys = self.check_added_keys(additional_keys)
-        if sim.sensor is not None and sim.sensor.aperture_type == "pressure_field" and "p_max" not in self.additional_keys:
-            self.additional_keys.append("p_max")
-        print(self.additional_keys)
-        
+        # if self.sensor.aperture_type == "pressure_field" and "p_max" not in self.additional_keys:
+        #     self.additional_keys.append("p_max")
+
         
     def __len__(self):
         if self.transducer_set is None:
@@ -162,9 +161,11 @@ class Experiment:
     
     
     # subdivide
-    def subdivide(self, indices = None):
-        if indices is None:
+    def subdivide(self, indices=None, repeat=False):
+        if indices is None and not repeat:
             indices = self.indices
+        elif indices is None and repeat:
+            indices = self.indices_to_run(indices, repeat=repeat)
         if len(indices) == 0:
             return None
         return np.array_split(np.array(indices), self.nodes)
@@ -204,7 +205,7 @@ class Experiment:
                     for index in indices:
                         self.simulate(index)
                 else:
-                    subdivisions = self.subdivide()
+                    subdivisions = self.subdivide(repeat=repeat)
                     if subdivisions is None:
                         print('Found no more simulations to run.')
                     else:
