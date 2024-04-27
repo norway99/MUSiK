@@ -397,7 +397,7 @@ class Focused(Transducer):
         delays = -self.not_transducer.beamforming_delays
 
         # offset the received sensor_data by the beamforming delays and apply receive apodization
-        for element_index in range(len(self.active_elements)):
+        for element_index in range(len(self.not_transducer.active_elements)):
             if delays[element_index] > 0:
                 # shift element data forwards
                 sensor_data[element_index, :-1] = apodization[element_index] * np.concatenate((sensor_data[element_index, 1 + delays[element_index]:], np.zeros(delays[element_index])))

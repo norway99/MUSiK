@@ -81,10 +81,10 @@ class SimProperties:
         return simprops
     
     
-    def optimize_simulation_parameters(self, frequency, sos=1540):
+    def optimize_simulation_parameters(self, frequency, sos=1540, transducer_dims=None):
         self.t_end       = self.__optimize_simulation_duration(sos=sos)
         self.voxel_size  = self.__optimize_voxel_size(frequency=frequency, sos=sos)
-        self.matrix_size = self.calc_matrix_size(self.grid_size, self.voxel_size)
+        self.matrix_size = self.calc_matrix_size(self.grid_size, self.voxel_size, transducer_dims=transducer_dims)
         self.bounds      = self.calc_bounding_vertices(self.matrix_size, self.PML_size, self.voxel_size)
         # print(f'optimizing simulation parameters: [voxel_size ({self.voxel_size[0]}m)^3], [duration {self.t_end}s], [matrix_size {self.matrix_size}], [functional_size {np.array(self.matrix_size) - 2 * np.array(self.PML_size)}]')
     
@@ -115,13 +115,26 @@ class SimProperties:
 
 
     # Computation in kwave utilizes a fourier-space calculation, therefore computational grid sizes require small prime factorizations to be efficient
-    def calc_matrix_size(self, grid_size, voxel_size):
+    def calc_matrix_size(self, grid_size, voxel_size, transducer_dims=None):
         matrix_size = []
+        
+        # If matrix size smaller than transducer size, expand matrix size
+        if transducer_dims is not None:
+            if grid_size[1] < transducer_dims[0] * 1.5:
+                grid_size[1] = transducer_dims[0] * 1.5
+            if grid_size[2] < transducer_dims[1] * 1.5:
+                grid_size[2] = transducer_dims[1] * 1.5
+                
         raw_matrix_size = grid_size / voxel_size
+        
         for dim in range(3):
             lpfs = []
             for i in range(int(raw_matrix_size[dim]), int(raw_matrix_size[dim] * 1.5)):
-                lpfs.append(self.largest_prime_factor(i))
+                lpf = self.largest_prime_factor(i)
+                if i % 2:
+                    lpfs.append(lpf * 2) # Does very poorly with simulations with an odd number of voxels
+                else:
+                    lpfs.append(lpf)
             matrix_size.append(int(raw_matrix_size[dim]) + np.argmin(lpfs))
         matrix_size = np.array(matrix_size)
         return matrix_size
@@ -176,7 +189,7 @@ class Simulation:
         self.dry = dry
         self.prepped_simulation = None
         self.additional_keys = additional_keys
-        self.record_pressure_field = len(self.additional_keys)>0
+        self.record_pressure_field = sensor.aperture_type == "pressure_field"
         
         
     def prep(self,):
@@ -202,15 +215,16 @@ class Simulation:
                 
                 if not dry:                    
                     affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
-                    self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0])
+                    self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
-                    print('preparation for sim {:4d} completed in {:15.2f} seconds'.format(self.index, round(time.time() - start_time, 3)))
+                    print('preparation for sim {:4d} completed in {:15.2f} seconds\n'.format(self.index, round(time.time() - start_time, 3)))
                     return prepped
                 else:
                     affine = geometry.Transform()
+                    self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = np.ones((2, self.sim_properties.matrix_size[0], self.sim_properties.matrix_size[1], self.sim_properties.matrix_size[2])) * np.array(self.phantom.baseline)[:,None,None,None]
-                    self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle, dry=True)
+                    self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
             else:
                 index -= transducer.get_num_rays()
                 
@@ -228,7 +242,7 @@ class Simulation:
     
     
     # given the simulation properties, phantom, and transducer, create the simulation file for the cuda binary and run
-    def __prep_simulation(self, index, sim_phantom, sim_transducer, sim_sensor, affine, steering_angle, dry=False):
+    def __prep_simulation(self, index, sim_phantom, sim_transducer, sim_sensor, affine, steering_angle):
                 
         # setup kgrid object
         pml_size_points = kwave.data.Vector(self.sim_properties.PML_size)  # [grid points]
@@ -311,7 +325,7 @@ class Simulation:
                     os.remove(input_file)
             
             if self.record_pressure_field:
-                signals, other_signals = sim_sensor.sort_pressure_field(sensor_data, additional_keys)
+                signals, other_signals = sim_sensor.sort_pressure_field(sensor_data, additional_keys, sensor_mask.shape)
             else:
                 signals, other_signals = sim_sensor.voxel_to_element(self.sim_properties, sim_transducer, discretized_sensor_coords, sensor_data, additional_keys)
         
@@ -320,7 +334,7 @@ class Simulation:
     
     def __write_signal(self, index, signals, time_array):
         if self.record_pressure_field:
-            utils.save_array(np.concatenate((time_array, signals), axis=0), os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}'), compression=False)
+            utils.save_array(np.concatenate((np.broadcast_to(time_array, (1, signals.shape[1],signals.shape[2])), signals), axis=0), os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}'), compression=False)
         else:
             utils.save_array(np.concatenate((time_array, signals), axis=0), os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}'), compression=False)
     
