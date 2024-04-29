@@ -323,7 +323,7 @@ class Simulation:
                 input_files = sorted(input_files, key=os.path.getmtime)
                 for input_file in input_files[:1]:
                     os.remove(input_file)
-            
+                                
             if self.record_pressure_field:
                 signals, other_signals = sim_sensor.sort_pressure_field(sensor_data, additional_keys, sensor_mask.shape)
             else:

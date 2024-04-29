@@ -127,7 +127,10 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         computational_grid_size = (np.array(sim_properties.matrix_size) - 2 * np.array(sim_properties.PML_size))
         data = sensor_data['p'].T
         if self.aperture_type == "transmit_as_receive":
-            element_signals = transmit.not_transducer.combine_sensor_data(data)
+            signals = transmit.not_transducer.combine_sensor_data(data)
+            other_signals = []
+            for other_key in additional_keys:
+                other_signals.append(sensor_data[other_key])
         else:            
             # omissions
             condensed_discrete_coords = discretized_sensor_coords[np.where(

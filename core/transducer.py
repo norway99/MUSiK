@@ -145,6 +145,8 @@ class Transducer:
         return len(self.ray_transforms)   
                 
     
+    
+    # Needs editing for number of elements
     def make_sensor_coords(self, c0):
 
         if self.sensor_sampling_scheme == "centroid":
@@ -166,10 +168,11 @@ class Transducer:
         self.sensor_coords = sensor_coords
 
 
+    # Likewise needs edits
     def get_num_elements(self):
         return self.elements
         
-        
+    
     def get_sensor_coords(self):
         return self.sensor_coords
     
@@ -260,47 +263,38 @@ class Transducer:
 
 
     def __discretize(self, kgrid):
-        # element_width = self.element_width / kgrid.dy
-        # if element_width < 1:
-        #     element_width = 1
+        num_elements = self.width // kgrid.dy
         element_width = 1
-        # kerf = self.kerf / kgrid.dy
         kerf = 0
         azimuth = self.width / kgrid.dy
         elevation = self.height / kgrid.dz    
-        
-        return element_width, kerf, azimuth, elevation
+        return num_elements, element_width, kerf, azimuth, elevation
         
         
     def make_notatransducer(self, kgrid, c0, s_angle, pml) -> kwave.ktransducer.NotATransducer: #  gets called immediately before sim is run
-        element_width, kerf, azimuth, elevation = self.__discretize(kgrid)
-        num_elements = self.width // kgrid.dy
+        num_elements, element_width, kerf, azimuth, elevation = self.__discretize(kgrid)
         
         position = [1, ((kgrid.Ny + pml[1] - azimuth - 1))/2, ((kgrid.Nz + pml[2] - elevation - 1))/2]
-        # position in terms of transducer-centric coordinates is always 0 0 0, this is the corner of the transducer
-                    
-        # my_transducer = kwave.ktransducer.kWaveTransducerSimple(
-        #         kgrid, self.elements, element_width, elevation, kerf,
-        #         position, self.radius)
         
-        my_transducer = kwave.ktransducer.kWaveTransducerSimple(
-                kgrid, num_elements, element_width, elevation, kerf,
-                position, self.radius)
-        
-        # print(f'self.elements, element_width, elevation, kerf: {num_elements, element_width, elevation, kerf}')
-        
+        my_transducer = kwave.ktransducer.kWaveTransducerSimple(kgrid, 
+                                                                num_elements, 
+                                                                element_width, 
+                                                                elevation, 
+                                                                kerf,
+                                                                position, 
+                                                                self.radius)
+                
         not_transducer = kwave.ktransducer.NotATransducer(transducer = my_transducer,
-                                            kgrid = kgrid,
-                                            # active_elements = self.active_elements, 
-                                            active_elements = None, 
-                                            focus_distance = self.focus_azimuth,
-                                            elevation_focus_distance = self.focus_elevation,
-                                            receive_apodization = self.receive_apodization,
-                                            transmit_apodization = self.transmit_apodization, 
-                                            sound_speed = c0,
-                                            input_signal = self.pulse, 
-                                            steering_angle_max = np.max(self.steering_angles),
-                                            steering_angle = s_angle)
+                                                            kgrid = kgrid,
+                                                            active_elements = None, 
+                                                            focus_distance = self.focus_azimuth,
+                                                            elevation_focus_distance = self.focus_elevation,
+                                                            receive_apodization = self.receive_apodization,
+                                                            transmit_apodization = self.transmit_apodization, 
+                                                            sound_speed = c0,
+                                                            input_signal = self.pulse, 
+                                                            steering_angle_max = np.max(self.steering_angles),
+                                                            steering_angle = s_angle)
         self.not_transducer = not_transducer
         return self.not_transducer
 
@@ -337,13 +331,6 @@ class Transducer:
         if self.compression_fac is not None:
             scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
         return scan_lines
-    
-    
-    # # implement this in the subclass
-    # def make_scan_line(self, sensor_data):
-    #     print('in wrong fn')
-    #     pass
-    
         
         
 class Focused(Transducer):
@@ -383,21 +370,28 @@ class Focused(Transducer):
         self.type = 'focused'
         
     
-    def make_scan_line(self, sensor_data):
-        
+    def make_scan_line(self, sensor_data, transmit_as_receive):
         # get the receive apodization
+        if transmit_as_receive:
+            num_element_signals = len(self.not_transducer.active_elements)
+            delays = -self.not_transducer.beamforming_delays
+        else:
+            num_element_signals = len(self.active_elements)
+            # Need to compute delays appropriately here - not quite sure how to do this yet
+                    # get the current beamforming weights and reverse
+            delays = np.zeros(len(self.active_elements))
+            print('beamforming for custom focused transducer not yet implemented - will not apply time delays for receive signal')
+        
+        
         if len(self.active_elements) > 1:
             if self.receive_apodization == 'Rectangular': self.receive_apodization = 'Rectangular'
-            apodization, _ = kwave.utils.signals.get_win(len(self.active_elements), type_=self.receive_apodization)
+            apodization, _ = kwave.utils.signals.get_win(num_element_signals, type_=self.receive_apodization)
         else:
             apodization = 1
         apodization = np.array(apodization)
 
-        # get the current beamforming weights and reverse
-        delays = -self.not_transducer.beamforming_delays
-
         # offset the received sensor_data by the beamforming delays and apply receive apodization
-        for element_index in range(len(self.not_transducer.active_elements)):
+        for element_index in range(num_element_signals):
             if delays[element_index] > 0:
                 # shift element data forwards
                 sensor_data[element_index, :-1] = apodization[element_index] * np.concatenate((sensor_data[element_index, 1 + delays[element_index]:], np.zeros(delays[element_index])))

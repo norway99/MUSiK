@@ -106,8 +106,8 @@ class DAS(Reconstruction):
             
     #     return time, coords, processed
 
-    def process_line(self, index, transducer, transform,):
-        processed = transducer.preprocess(transducer.make_scan_line(self.results[index][1]), self.results[index][0], self.sim_properties)
+    def process_line(self, index, transducer, transform, transmit_as_receive=True):
+        processed = transducer.preprocess(transducer.make_scan_line(self.results[index][1], transmit_as_receive), self.results[index][0], self.sim_properties)
         coords = self.__time_to_coord(self.results[index][0], transform)
         times = self.results[index][0]
         return times, coords, processed
