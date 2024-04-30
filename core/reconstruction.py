@@ -258,6 +258,11 @@ class Compounding(Reconstruction):
     
     def compound(self): # not just plane-wave compounding, also works for saft (extended aperture with focused transducers)
 
+        if isinstance(self.transducer_set[0], Focused):
+            # do nothing
+        else:
+            # still do nothing
+
         matrix_dims = self.phantom.matrix_dims
         voxel_dims = self.phantom.voxel_dims
         c0 = self.phantom.baseline[0]
@@ -297,7 +302,8 @@ class Compounding(Reconstruction):
             nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
             normal = nl_transform.apply_to_point((1, 0, 0)) # normal vector to plane wave shot
 
-            # transmit_dists = np.absolute(np.dot(np.array([xxx-transmit_position[0], yyy-transmit_position[1], zzz-transmit_position[2]]), normal))
+            # didn't include steering angle! duh
+
             xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2])
             distances = np.stack([xxx, yyy, zzz], axis=0)
             
