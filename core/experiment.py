@@ -279,8 +279,10 @@ class Experiment:
         simulation.run()
         
     
-    def add_results(self,):
-        self.results = Results(os.path.join(self.simulation_path,'results'))
+    def add_results(self, results_path = None):
+        if results_path is None:
+            results_path = self.simulation_path
+        self.results = Results(os.path.join(results_path,'results'))
         
         
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
