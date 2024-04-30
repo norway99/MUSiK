@@ -8,10 +8,10 @@ import geometry
 class Sensor: # sensor points are represented in global coordinate space for this class
 
     def __init__(self,
-                 sensor_type = None, # transmit_as_receive, extended_aperture, pressure_field, microphone 
+                 sensor_type = None,
                  transducer_set = None,
                  sensor_coords = None,
-                 aperture_type = None,
+                 aperture_type = None, # transmit_as_receive, extended_aperture, pressure_field, microphone 
                  ):
         self.aperture_type = aperture_type
         self.element_lookup = None
@@ -126,37 +126,28 @@ class Sensor: # sensor points are represented in global coordinate space for thi
     def voxel_to_element(self, sim_properties, transmit, discretized_sensor_coords, sensor_data, additional_keys):
         computational_grid_size = (np.array(sim_properties.matrix_size) - 2 * np.array(sim_properties.PML_size))
         data = sensor_data['p'].T
-        if self.aperture_type == "transmit_as_receive":
+        if type(transmit).__name__ == "Focused" and self.aperture_type == "transmit_as_receive":
             signals = transmit.not_transducer.combine_sensor_data(data)
             other_signals = []
             for other_key in additional_keys:
                 other_signals.append(sensor_data[other_key])
-        else:            
+        else:
             # omissions
             condensed_discrete_coords = discretized_sensor_coords[np.where(
                 [np.logical_and(
-                    np.prod(np.where(discretized_sensor_coords[i] > 0, 1, 0)) != 0,
-                    np.prod(np.where(discretized_sensor_coords[i] < computational_grid_size, 1, 0)) != 0,)
+                    np.prod(np.where(discretized_sensor_coords[i] >= 0, 1, 0)) != 0,
+                    np.prod(np.where(discretized_sensor_coords[i] <  computational_grid_size, 1, 0)) != 0,)
                 for i in range(len(discretized_sensor_coords))],
             )]
-                    
+                                            
             # hashing
             hash_list = np.sum(condensed_discrete_coords * np.array([1,computational_grid_size[0], computational_grid_size[0] * computational_grid_size[1]]), axis=1)
             # collisions
             hash_list = np.unique(hash_list)
             # sorting
             hash_list = np.array(sorted(hash_list))
-                    
-            def hash_fn(coord, condensed_discrete_coords, hash_list, data):
-                if np.logical_or(
-                    np.prod(np.where(coord > 0, 1, 0)) == 0,
-                    np.prod(np.where(coord < computational_grid_size, 1, 0)) == 0,):
-                    return np.zeros(data[0].shape)
-                hash_val = np.sum(coord * np.array([1, computational_grid_size[0], computational_grid_size[0] * computational_grid_size[1]]))
-                index = np.where(hash_list == hash_val)[0][0]
-                return data[index]
-            
-            sensor_point_signals = np.array([hash_fn(coord, condensed_discrete_coords, hash_list, data) for coord in discretized_sensor_coords])
+                        
+            sensor_point_signals = np.array([self.hash_fn(coord, hash_list, data, computational_grid_size) for coord in discretized_sensor_coords])
             
             if self.aperture_type == "microphone":
                 return sensor_point_signals
@@ -173,7 +164,15 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         
         return signals, other_signals
     
-    
+    def hash_fn(self, coord, hash_list, data, computational_grid_size):
+                if np.logical_or(
+                    np.prod(np.where(coord >= 0, 1, 0)) == 0,
+                    np.prod(np.where(coord < computational_grid_size, 1, 0)) == 0,):
+                    return np.zeros(data[0].shape)
+                hash_val = np.sum(coord * np.array([1, computational_grid_size[0], computational_grid_size[0] * computational_grid_size[1]]))
+                index = np.where(hash_list == hash_val)[0][0]
+                return data[index]
+            
     def sort_pressure_field(self, sensor_data, additional_keys, grid_shape):
         signals = sensor_data['p'].T.reshape(grid_shape[1],grid_shape[0],-1).transpose(1,0,2)
         other_signals = []

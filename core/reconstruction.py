@@ -260,8 +260,10 @@ class Compounding(Reconstruction):
 
         if isinstance(self.transducer_set[0], Focused):
             # do nothing
+            pass
         else:
             # still do nothing
+            pass
 
         matrix_dims = self.phantom.matrix_dims
         voxel_dims = self.phantom.voxel_dims
@@ -269,7 +271,7 @@ class Compounding(Reconstruction):
         # dt = self.kgrid.dt # not the correct way to access the kgrid
         # ------------------------------------------------------------------------------------------------------------
         # fix this sometime
-        dt = 3.75e-8
+        dt = (self.results[0][0][-1] - self.results[0][0][0]) / self.results[0][0].shape[0]
         # ------------------------------------------------------------------------------------------------------------
         
         # need to choose lateral, axial, and elevation resolutions
@@ -288,14 +290,19 @@ class Compounding(Reconstruction):
         transducer_count = 0
         transducer, transducer_transform = self.transducer_set[transducer_count]
         running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
+        steering_angle = transducer.steering_angles[0]
+        
         for index in tqdm.tqdm(range(len(self.results))):
             if index > running_index_list[transducer_count] - 1:
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
-                steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
+            
+            steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
+            dt = (self.results[index][0][-1] - self.results[index][0][0]) / self.results[index][0].shape[0]
             preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties)
-            preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
+            if len(preprocessed_data.shape) == 2:
+                preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
 
             transmit_position = transducer_transform.translation
             if isinstance(transducer, Planewave):
@@ -317,7 +324,6 @@ class Compounding(Reconstruction):
                 xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2])
                 element_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
                 travel_times = ((transmit_dists + element_dists)/c0/dt).astype(np.int32)
-                # print(travel_times)
 
                 # image_matrix += rf_series[travel_times]
                 
@@ -326,6 +332,9 @@ class Compounding(Reconstruction):
                         for k in range(len(z)):
                             image_matrix[i][j][k] += rf_series[travel_times[i][j][k]]
 
+
+
+        plt.plot(preprocessed_data[0])
         return image_matrix
                                                                                 
                 
