@@ -296,14 +296,18 @@ class Compounding(Reconstruction):
 
             preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties)
             preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
-            
+
             transmit_position = transducer_transform.translation
-            transmit_rotation = transducer_transform.rotation.as_euler('ZYX')
-            nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
-            normal = nl_transform.apply_to_point((1, 0, 0)) # normal vector to plane wave shot
-
-            # didn't include steering angle! duh
-
+            if isinstance(transducer, Planewave):
+                transmit_rotation = transducer_transform.get()[:3, :3]
+                pw_rotation = np.array([[np.cos(steering_angle), -np.sin(steering_angle), 0], [np.sin(steering_angle), np.cos(steering_angle), 0], [0, 0, 1]])
+                rotation = np.matmul(pw_rotation, transmit_rotation)
+                normal = np.matmul(pw_rotation, np.array([1, 0, 0])) 
+            else:
+                transmit_rotation = transducer_transform.rotation.as_euler('ZYX')
+                nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
+                normal = nl_transform.apply_to_point((1, 0, 0)) # do we need this for the focused case?????
+                
             xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2])
             distances = np.stack([xxx, yyy, zzz], axis=0)
             
