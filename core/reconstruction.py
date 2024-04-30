@@ -243,10 +243,7 @@ class Compounding(Reconstruction):
 
     def __init__(self,
                  experiment = None):
-        for transducer in experiment.transducer_set.transducers:
-            if not isinstance(transducer, Planewave):
-                print("Warning: attempting to instantiate Compounding reconstruction class but transducer set does not exclusively contain plane-wave tranducers.")
-                break
+
         super().__init__(experiment)
 
     def __get_element_centroids(self): # in global coordinates
@@ -259,7 +256,7 @@ class Compounding(Reconstruction):
             pos += sensors_per_el[entry]
         return element_centroids
     
-    def compound(self):
+    def compound(self): # not just plane-wave compounding, also works for saft (extended aperture with focused transducers)
 
         matrix_dims = self.phantom.matrix_dims
         voxel_dims = self.phantom.voxel_dims
