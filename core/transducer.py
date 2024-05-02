@@ -396,7 +396,8 @@ class Transducer:
                                                                 kerf,
                                                                 position, 
                                                                 self.radius)
-                
+
+        s_angle = s_angle*180/np.pi
         not_transducer = kwave.ktransducer.NotATransducer(transducer = my_transducer,
                                                             kgrid = kgrid,
                                                             active_elements = None, 
@@ -405,8 +406,8 @@ class Transducer:
                                                             receive_apodization = self.receive_apodization,
                                                             transmit_apodization = self.transmit_apodization, 
                                                             sound_speed = c0,
-                                                            input_signal = self.pulse, 
-                                                            steering_angle_max = np.max(self.steering_angles),
+                                                            input_signal = self.pulse,
+                                                            steering_angle_max = 180/np.pi * np.max(self.steering_angles),
                                                             steering_angle = s_angle)
         self.not_transducer = not_transducer
         return self.not_transducer
@@ -578,7 +579,7 @@ class Planewave(Transducer):
 
         ray_transforms, yaws = self.make_ray_transforms(imaging_ndims, sweep, ray_num)[:2] 
         if imaging_ndims == 2:
-            self.steering_angles = np.ndarray.tolist(np.array(yaws) * 180/np.pi) 
+            self.steering_angles = yaws
             self.ray_transforms = [geometry.Transform(rotation = (0, 0, 0)) for yaw in yaws]
         else:
             self.ray_transforms = ray_transforms
