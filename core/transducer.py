@@ -578,7 +578,7 @@ class Planewave(Transducer):
 
         ray_transforms, yaws = self.make_ray_transforms(imaging_ndims, sweep, ray_num)[:2] 
         if imaging_ndims == 2:
-            self.steering_angles = yaws
+            self.steering_angles = np.ndarray.tolist(np.array(yaws) * 180/np.pi) 
             self.ray_transforms = [geometry.Transform(rotation = (0, 0, 0)) for yaw in yaws]
         else:
             self.ray_transforms = ray_transforms
