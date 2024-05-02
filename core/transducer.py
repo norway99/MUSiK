@@ -10,8 +10,45 @@ import kwave
 import kwave.ktransducer
 from scipy.signal import hilbert
 
-
+        
 class Transducer:
+    """
+    A class to represent a transducer object. This class is used to create a transducer object that can be used in a simulation.
+
+    Attributes:
+        label (str): The label of the transducer.
+        max_frequency (float): The maximum frequency of the transducer in Hz.
+        source_strength (float): The source strength of the transducer.
+        cycles (int): The number of cycles of the transducer.
+        elements (int): The number of elements in the transducer.
+        active_elements (ndarray): An array of active element indices.
+        width (float): The total width of the transducer.
+        height (float): The total height of the transducer.
+        radius (float): The radius of the transducer.
+        focus_azimuth (float): The azimuth focus of the transducer.
+        focus_elevation (float): The elevation focus of the transducer.
+        sensor_sampling_scheme (str): The sensor sampling scheme.
+        sweep (float or ndarray): The sweep angle of the transducer.
+        ray_num (int or ndarray): The number of rays per dimension.
+        imaging_ndims (int): The number of dimensions for imaging.
+        transmit_apodization (str): The transmit apodization method.
+        receive_apodization (str): The receive apodization method.
+        harmonic (int): The harmonic of the transducer.
+        bandwidth (float): The bandwidth of the transducer.
+        compression_fac (float): The compression factor of the transducer.
+        normalize (bool): Whether to normalize the transducer.
+
+    Methods:
+        load(transducer_dict): Loads a transducer object from a dictionary.
+        save(): Saves the transducer object as a dictionary.
+        make_ray_transforms(imaging_ndims, sweep, ray_num): Creates ray transforms based on the imaging dimensions, sweep angle, and number of rays per dimension.
+        get_num_rays(): Returns the number of rays in the transducer.
+        make_sensor_coords(c0): Creates sensor coordinates based on the speed of sound.
+        get_num_elements(): Returns the number of elements in the transducer.
+        get_sensor_coords(): Returns the sensor coordinates of the transducer.
+        plot_sensor_coords(ax=None, transform=None, save=False, save_path=None, scale=0.003, color='b'): Plots the sensor coordinates of the transducer.
+        plot_fov(ax=None, transform=None, save=False, save_path=None, scale=0.003, length=0.025, color='b'): Plots the field of view of the transducer.
+    """
     def __init__(self,
                  label                      = None,
                  max_frequency              = 2e6,
@@ -40,8 +77,31 @@ class Transducer:
                  compression_fac            = None,
                  normalize                  = True,
                  ):
-
-        # probably should check that the geometry values are all positive!
+        
+        """
+        Args:
+            label (str, optional): The label of the transducer. Defaults to None.
+            max_frequency (float, optional): The maximum frequency of the transducer in Hz. Defaults to 2e6.
+            source_strength (float, optional): The source strength of the transducer. Defaults to 1e6.
+            cycles (int, optional): The number of cycles of the transducer. Defaults to 2.
+            elements (int, optional): The number of elements in the transducer. Defaults to 32.
+            active_elements (ndarray, optional): An array of active element indices. Defaults to None.
+            width (float, optional): The total width of the transducer. Defaults to 1e-2.
+            height (float, optional): The total height of the transducer. Defaults to 1e-2.
+            radius (float, optional): The radius of the transducer. Defaults to float('inf').
+            focus_azimuth (float, optional): The azimuth focus of the transducer. Defaults to float('inf').
+            focus_elevation (float, optional): The elevation focus of the transducer. Defaults to float('inf').
+            sensor_sampling_scheme (str, optional): The sensor sampling scheme. Defaults to 'centroid'.
+            sweep (float or ndarray, optional): The sweep angle of the transducer. Defaults to np.pi/3.
+            ray_num (int or ndarray, optional): The number of rays per dimension. Defaults to 64.
+            imaging_ndims (int, optional): The number of dimensions for imaging. Defaults to 2.
+            transmit_apodization (str, optional): The transmit apodization method. Defaults to 'Tukey'.
+            receive_apodization (str, optional): The receive apodization method. Defaults to 'Rectangular'.
+            harmonic (int, optional): The harmonic of the transducer. Defaults to 1.
+            bandwidth (float, optional): The bandwidth of the transducer. Defaults to 100.
+            compression_fac (float, optional): The compression factor of the transducer. Defaults to None.
+            normalize (bool, optional): Whether to normalize the transducer. Defaults to True.
+        """
         
         self.label = label
         self.max_frequency = max_frequency
@@ -51,10 +111,6 @@ class Transducer:
         self.active_elements = np.arange(elements)
         self.width = width
         self.height = height
-        # self.element_width = element_width
-        # self.elevation = elevation
-        # self.kerf = kerf
-        # self.azimuth = self.elements*(self.element_width+self.kerf) - self.kerf         # same as self.width
         self.radius = radius
         self.focus_azimuth = focus_azimuth
         self.focus_elevation = focus_elevation
@@ -124,7 +180,19 @@ class Transducer:
            
     
     def make_ray_transforms(self, imaging_ndims, sweep, ray_num):
+        """
+        Creates ray transforms based on the imaging dimensions, sweep angle, and number of rays per dimension.
 
+        Args:
+            imaging_ndims (int): The number of dimensions for imaging.
+            sweep (float or ndarray): The sweep angle of the transducer.
+            ray_num (int or ndarray): The number of rays per dimension.
+
+        Returns:
+            list: A list of ray transforms.
+            ndarray: The yaw angles.
+            ndarray: The pitch angles.
+        """
         if imaging_ndims == 2:
             if ray_num == 1:
                 coeff = -1
@@ -142,13 +210,24 @@ class Transducer:
     
 
     def get_num_rays(self) -> int:
+        """
+        Returns the number of rays in the transducer.
+
+        Returns:
+            int: The number of rays in the transducer.
+        """
         return len(self.ray_transforms)   
                 
     
     
     # Needs editing for number of elements
     def make_sensor_coords(self, c0):
+        """
+        Creates sensor coordinates based on the speed of sound.
 
+        Args:
+            c0 (float): The speed of sound.
+        """
         if self.sensor_sampling_scheme == "centroid":
             numpts = 1
             sensor_z_coords = 0
@@ -168,16 +247,38 @@ class Transducer:
         self.sensor_coords = sensor_coords
 
 
-    # Likewise needs edits
     def get_num_elements(self):
+        """
+        Returns the number of elements in the transducer.
+
+        Returns:
+            int: The number of elements in the transducer.
+        """
         return self.elements
         
     
     def get_sensor_coords(self):
+        """
+        Returns the sensor coordinates of the transducer.
+
+        Returns:
+            ndarray: The sensor coordinates of the transducer.
+        """
         return self.sensor_coords
     
     
     def plot_sensor_coords(self, ax=None, transform=None, save=False, save_path=None, scale=0.003, color='b'):
+        """
+        Plots the sensor coordinates of the transducer.
+
+        Args:
+            ax (Axes3D, optional): The 3D axes to plot on. If None, a new figure and axes will be created. Defaults to None.
+            transform (Transform, optional): The transform to apply to the sensor coordinates. Defaults to None.
+            save (bool, optional): Whether to save the plot. Defaults to False.
+            save_path (str, optional): The path to save the plot. Required if save is True. Defaults to None.
+            scale (float, optional): The scale of the plot. Defaults to 0.003.
+            color (str, optional): The color of the plot. Defaults to 'b'.
+        """
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
@@ -197,6 +298,18 @@ class Transducer:
                 plt.show()
                 
     def plot_fov(self, ax=None, transform=None, save=False, save_path=None, scale=0.003, length=0.025, color='b'):
+        """
+        Plots the field of view of the transducer.
+
+        Args:
+            ax (Axes3D, optional): The 3D axes to plot on. If None, a new figure and axes will be created. Defaults to None.
+            transform (Transform, optional): The transform to apply to the field of view. Defaults to None.
+            save (bool, optional): Whether to save the plot. Defaults to False.
+            save_path (str, optional): The path to save the plot. Required if save is True. Defaults to None.
+            scale (float, optional): The scale of the plot. Defaults to 0.003.
+            length (float, optional): The length of the field of view. Defaults to 0.025.
+            color (str, optional): The color of the plot. Defaults to 'b'.
+        """
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
@@ -331,6 +444,7 @@ class Transducer:
         if self.compression_fac is not None:
             scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
         return scan_lines
+        
         
         
 class Focused(Transducer):

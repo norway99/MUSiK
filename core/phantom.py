@@ -133,7 +133,7 @@ class Phantom:
         if type(image) == np.ndarray:
             data = image
         
-        # data = transfer_fn(data)
+        data = transfer_fn(data)
 
         x = np.arange(0, data.shape[0])
         y = np.arange(0, data.shape[1])
@@ -159,7 +159,7 @@ class Phantom:
             return 0
         
         new_phantom = interp(points)
-        self.complete = np.stack((new_phantom * self.baseline[0], new_phantom * self.baseline[1]), axis = 0)        
+        self.complete = np.stack((new_phantom * self.baseline[0]/self.baseline[1], new_phantom), axis = 0)        
 
 
 	# set mask and read tissues by supplying a list of shapes and corresponding tissues

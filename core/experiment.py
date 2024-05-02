@@ -90,26 +90,12 @@ class Experiment:
         self.add_results()
         self.indices = self.indices_to_run(indices)
         self.additional_keys = self.check_added_keys(additional_keys)
-        # if self.sensor.aperture_type == "pressure_field" and "p_max" not in self.additional_keys:
-        #     self.additional_keys.append("p_max")
 
         
     def __len__(self):
         if self.transducer_set is None:
             return 0
-        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
-
-
-    # get the simulation indices of any simulations that do not have results
-    def indices_to_run(self, indices=None, repeat=False):
-        if indices is None:
-            indices = list(range(len(self)))
-        if np.isscalar(indices):
-            indices = [indices]
-        if (self.results is None or len(self.results) == 0) or repeat:
-            return indices
-        else:
-            return sorted(list(set(indices) - set(self.results.indices())))        
+        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])     
     
     
     # save experiment
@@ -158,6 +144,18 @@ class Experiment:
         elif len(experiment.results) > len(experiment):
             print(f'Number of simulation results ({len(experiment.results)}) is greater than the expected number of simulation results ({len(experiment)}), did the experiment parameters change since running?')
         return experiment
+    
+    
+    # get the simulation indices of any simulations that do not have results
+    def indices_to_run(self, indices=None, repeat=False):
+        if indices is None:
+            indices = list(range(len(self)))
+        if np.isscalar(indices):
+            indices = [indices]
+        if (self.results is None or len(self.results) == 0) or repeat:
+            return indices
+        else:
+            return sorted(list(set(indices) - set(self.results.indices())))   
     
     
     # subdivide
