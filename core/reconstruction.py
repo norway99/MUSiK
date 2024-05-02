@@ -297,8 +297,8 @@ class Compounding(Reconstruction):
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
             
-            steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
-
+            steering_angle = np.pi/180 * transducer.steering_angles[index - running_index_list[transducer_count]]
+            
             dt = (self.results[index][0][-1] - self.results[index][0][0]) / self.results[index][0].shape[0]
             preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties)
             if len(preprocessed_data.shape) == 2:
@@ -330,10 +330,7 @@ class Compounding(Reconstruction):
                 for i in range(len(x)):
                     for j in range(len(y)):
                         for k in range(len(z)):
-                            image_matrix[i][j][k] += rf_series[travel_times[i][j][k]]
-
-
-
+                            image_matrix[i][j][k] += rf_series[travel_times[i][j][k]
         plt.plot(preprocessed_data[0])
         return image_matrix
                                                                                 
