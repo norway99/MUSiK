@@ -397,7 +397,6 @@ class Transducer:
                                                                 position, 
                                                                 self.radius)
 
-        s_angle = s_angle*180/np.pi
         not_transducer = kwave.ktransducer.NotATransducer(transducer = my_transducer,
                                                             kgrid = kgrid,
                                                             active_elements = None, 
@@ -408,7 +407,7 @@ class Transducer:
                                                             sound_speed = c0,
                                                             input_signal = self.pulse,
                                                             steering_angle_max = 180/np.pi * np.max(self.steering_angles),
-                                                            steering_angle = s_angle)
+                                                            steering_angle = s_angle*180/np.pi)
         self.not_transducer = not_transducer
         return self.not_transducer
 

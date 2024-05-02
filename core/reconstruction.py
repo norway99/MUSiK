@@ -208,9 +208,9 @@ class DAS(Reconstruction):
         Z = np.linspace(bounds[2,0], bounds[2,1], matsize)
         
         if dimensions == 2:
-            X, Y = np.meshgrid(X, Y)
+            X, Y = np.meshgrid(X, Y, indexing='ij') # worked before changing indexing to ij so maybe take this out if it doesn't work anymore :/
         else:
-            X, Y, Z = np.meshgrid(X, Y, Z)
+            X, Y, Z = np.meshgrid(X, Y, Z, indexing='ij')
 
         signals = []
         count = 0
@@ -281,7 +281,7 @@ class Compounding(Reconstruction):
         x = np.arange(-matrix_dims[0]*voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2, step=resolution)
         y = np.arange(-matrix_dims[1]*voxel_dims[1]/2, matrix_dims[1]*voxel_dims[1]/2, step=resolution)
         z = np.arange(-matrix_dims[2]*voxel_dims[2]/2, matrix_dims[2]*voxel_dims[2]/2, step=resolution)
-        
+                
         image_matrix = np.zeros((len(x), len(y), len(z)))
         
         # note that origin is at center of the 3d image in global coordinate system
@@ -298,13 +298,14 @@ class Compounding(Reconstruction):
                 transducer, transducer_transform = self.transducer_set[transducer_count]
             
             steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
-            
+
             dt = (self.results[index][0][-1] - self.results[index][0][0]) / self.results[index][0].shape[0]
             preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties)
             if len(preprocessed_data.shape) == 2:
                 preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
 
             transmit_position = transducer_transform.translation
+                        
             if isinstance(transducer, Planewave):
                 transmit_rotation = transducer_transform.get()[:3, :3]
                 pw_rotation = np.array([[np.cos(steering_angle), -np.sin(steering_angle), 0], [np.sin(steering_angle), np.cos(steering_angle), 0], [0, 0, 1]])
@@ -315,13 +316,13 @@ class Compounding(Reconstruction):
                 nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
                 normal = nl_transform.apply_to_point((1, 0, 0)) # do we need this for the focused case?????
                 
-            xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2])
+            xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2], indexing='ij')
             distances = np.stack([xxx, yyy, zzz], axis=0)
             
             transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
             
             for centroid, rf_series in zip(element_centroids, preprocessed_data):
-                xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2])
+                xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2], indexing='ij')
                 element_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
                 travel_times = ((transmit_dists + element_dists)/c0/dt).astype(np.int32)
 
@@ -330,7 +331,10 @@ class Compounding(Reconstruction):
                 for i in range(len(x)):
                     for j in range(len(y)):
                         for k in range(len(z)):
-                            image_matrix[i][j][k] += rf_series[travel_times[i][j][k]
+                            image_matrix[i][j][k] += rf_series[travel_times[i][j][k]]
+
+
+
         plt.plot(preprocessed_data[0])
         return image_matrix
                                                                                 
