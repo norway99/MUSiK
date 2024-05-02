@@ -74,7 +74,7 @@ class Phantom:
         utils.dict_to_json(self.__save_tissues(), filepath + '/tissues.json')
         utils.save_array(self.mask, filepath + '/mask.npz')
         if self.complete is not None:
-            utils.save_array(self.complete, filepath + '/complete.npy')
+            utils.save_array(self.complete, filepath + '/complete.npy', compression=False)
         dictionary = self.__dict__.copy()
         dictionary.pop('mask')
         dictionary.pop('tissues')
@@ -105,6 +105,7 @@ class Phantom:
         phantom.rng = np.random.default_rng(source['seed'])
         phantom.voxel_dims = source['voxel_dims']
         phantom.matrix_dims = source['matrix_dims']
+        phantom.from_mask = source['from_mask']
         return phantom
     
     
@@ -159,7 +160,12 @@ class Phantom:
             return 0
         
         new_phantom = interp(points)
-        self.complete = np.stack((new_phantom * self.baseline[0]/self.baseline[1], new_phantom), axis = 0)        
+        self.complete = np.stack((new_phantom * self.baseline[0]/self.baseline[1], new_phantom), axis = 0)   
+        self.voxel_dims = target_voxel_size
+        self.matrix_dims = new_phantom.shape
+        self.from_mask = False
+        self.tissues = {}
+        
 
 
 	# set mask and read tissues by supplying a list of shapes and corresponding tissues
