@@ -300,7 +300,10 @@ class Compounding(Reconstruction):
             steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
             dt = (self.results[index][0][-1] - self.results[index][0][0]) / self.results[index][0].shape[0]
-            preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties)
+            preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
+            
+            plt.plot(preprocessed_data[0])
+            
             if len(preprocessed_data.shape) == 2:
                 preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
 

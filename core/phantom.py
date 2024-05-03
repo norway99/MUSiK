@@ -106,6 +106,7 @@ class Phantom:
         phantom.voxel_dims = source['voxel_dims']
         phantom.matrix_dims = source['matrix_dims']
         phantom.from_mask = source['from_mask']
+        phantom.baseline = source['baseline']
         return phantom
     
     
