@@ -276,7 +276,7 @@ class Compounding(Reconstruction):
         
         # need to choose lateral, axial, and elevation resolutions
         
-        resolution = max(dt*c0, 2*c0/self.transducer_set.get_lowest_frequency()) / 2 # make sure this works
+        resolution = max(dt*c0, 2*c0/self.transducer_set.get_lowest_frequency()) / 4 # make sure this works
         
         x = np.arange(-matrix_dims[0]*voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2, step=resolution)
         y = np.arange(-matrix_dims[1]*voxel_dims[1]/2, matrix_dims[1]*voxel_dims[1]/2, step=resolution)
@@ -301,18 +301,18 @@ class Compounding(Reconstruction):
 
             dt = (self.results[index][0][-1] - self.results[index][0][0]) / self.results[index][0].shape[0]
             preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
-            middle_element = transducer.elements // 2
-            if transducer.elements % 2 == 0:
-                middle_element = middle_element - 0.5
-            t_start = transducer.width / 2 *  np.sin(steering_angle) / c0 / dt + len(transducer.get_pulse())/2
-            preprocessed_data = preprocessed_data[:, :, t_start:] 
+            # middle_element = transducer.elements // 2
+            # if transducer.elements % 2 == 0:
+            #     middle_element = middle_element - 0.5
+            t_start = int(np.ceil(transducer.width / 2 *  np.abs(np.sin(steering_angle)) / c0 / dt + len(transducer.get_pulse())/2))
+            # preprocessed_data = preprocessed_data[:, t_start:] 
             
             if len(preprocessed_data.shape) == 2:
                 preprocessed_data = preprocessed_data[:, t_start:]
                 preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
             else:
                 preprocessed_data = preprocessed_data[:, :, t_start:]
-                
+                                
             transmit_position = transducer_transform.translation
                         
             if isinstance(transducer, Planewave):
@@ -342,9 +342,6 @@ class Compounding(Reconstruction):
                         for k in range(len(z)):
                             image_matrix[i][j][k] += rf_series[travel_times[i][j][k]]
 
-
-
-        plt.plot(preprocessed_data[0])
         return image_matrix
                                                                                 
                 
