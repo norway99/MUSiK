@@ -27,3 +27,4 @@ __pycache__
 *simulations
 *.obj
 *.dcm
+*.vox

@@ -66,6 +66,7 @@ class Phantom:
         self.baseline = baseline
         self.from_mask = from_mask
         self.complete = None
+        self.default_tissue = None
         
         
     # save phantom to source dir containing tissues, mask, and source
@@ -107,6 +108,7 @@ class Phantom:
         phantom.matrix_dims = source['matrix_dims']
         phantom.from_mask = source['from_mask']
         phantom.baseline = source['baseline']
+        phantom.default_tissue = source['default_tissue']
         return phantom
     
     
@@ -185,14 +187,26 @@ class Phantom:
         
         
     # add tissue
-    def add_tissue(self, tissue):
+    def add_tissue(self, tissue, mask=None):
         self.from_mask = True
         self.tissues[tissue.name] = tissue
+        if mask is not None:
+            self.mask = np.where(mask, tissue.label, self.mask)
+            self.complete = None
         
         
     def remove_tissue(self, name):
         if name in self.tissues.keys():
+            self.mask = np.where(self.mask == self.tissues[name].label, 0, self.mask)
             del self.tissues[name]
+            self.complete = None
+        else:
+            print('tissue not found')
+            
+            
+    def set_default_tissue(self, name):
+        if name in self.tissues.keys():
+            self.default_tissue = self.tissues[name].label
         else:
             print('tissue not found')
         
@@ -202,6 +216,7 @@ class Phantom:
         if tissue.name not in self.tissues.keys():
             self.tissues[tissue.name] = tissue
         self.mask = np.where(region, tissue.label, self.mask)
+        self.complete = None
 
 
     def get_tissues(self, ):
@@ -312,6 +327,10 @@ class Phantom:
         # If self from_mask or self_from image, get either the mask or the matrix
         if self.from_mask:
             medium = self.mask
+            if self.default_tissue is not None:
+                tissue_fill = self.default_tissue
+            else:
+                tissue_fill = 0
         else:
             medium = self.get_complete() # retrieve the matrix to transform - This should really be mask not complete in most cases
         
@@ -322,11 +341,11 @@ class Phantom:
         
         if self.from_mask:
             if pad_x:
-                medium = np.pad(medium, ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=0)
+                medium = np.pad(medium, ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=tissue_fill)
             if pad_y:
-                medium = np.pad(medium, ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=0)
+                medium = np.pad(medium, ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=tissue_fill)
             if pad_z:
-                medium = np.pad(medium, ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=0)
+                medium = np.pad(medium, ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=tissue_fill)
         else:
             if pad_x:
                 medium = np.stack(

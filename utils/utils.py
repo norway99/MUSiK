@@ -2,6 +2,8 @@ import json
 import numpy as np
 import os
 import mrcfile
+from scipy.ndimage import binary_fill_holes
+
 
 # for serializing numpy arrays to json
 class NpEncoder(json.JSONEncoder):
@@ -69,3 +71,10 @@ def generate_distance_matrix(size, center=None) -> np.array:
     coord_arrays = np.meshgrid(*dist_arrays, indexing='ij')
     dist = np.sqrt(sum([coord**2 for coord in coord_arrays]))
     return dist
+
+
+def fill_3d_holes(binary_mask):
+    binary_mask = np.where(binary_mask > 0, 1, 0)
+    filled_region = binary_fill_holes(binary_mask)
+    binary_mask[filled_region > 0] = 1
+    return binary_mask
