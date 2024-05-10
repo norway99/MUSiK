@@ -11,6 +11,7 @@
 *.avi
 *.json
 *.csv
+*.obj
 simulation_files
 series_*
 baby.py
