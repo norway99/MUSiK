@@ -6,7 +6,7 @@ sys.path.append('./core')
 sys.path.append('./')
 
 sys.path.append('../utils')
-sys.path.append('./core')
+sys.path.append('../core')
 sys.path.append('../')
 
 import utils
