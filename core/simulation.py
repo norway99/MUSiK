@@ -11,10 +11,10 @@ import glob
 from functools import reduce
 from math import sqrt
 
-from .tissue import Tissue
-from .phantom import Phantom
-from .transducer import Transducer, Focused, Planewave
-from .transducer_set import TransducerSet
+from tissue import Tissue
+from phantom import Phantom
+from transducer import Transducer, Focused, Planewave
+from transducer_set import TransducerSet
 
 import sys
 sys.path.append('../utils')
