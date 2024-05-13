@@ -1,10 +1,6 @@
 import sys
 import argparse
-
-sys.path.append('../utils')
-sys.path.append('../core')
-sys.path.append('../')
-from core import *
+from .experiment import Experiment
 
 
 def main():
@@ -18,14 +14,14 @@ def main():
     
     args = parser.parse_args()
     
-    test_experiment = experiment.Experiment.load(args.path)
+    experiment = Experiment.load(args.path)
     
-    test_experiment.nodes = args.nodes
-    test_experiment.gpu = args.gpu
-    test_experiment.workers = args.workers
+    experiment.nodes = args.nodes
+    experiment.gpu = args.gpu
+    experiment.workers = args.workers
     if args.results:
-        test_experiment.indices = test_experiment.indices_to_run()
-    test_experiment.run(args.node)
+        experiment.indices = experiment.indices_to_run()
+    experiment.run(args.node)
     
 if __name__ == "__main__":
     sys.exit(main())
