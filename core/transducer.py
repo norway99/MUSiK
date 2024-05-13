@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import utils
 
 sys.path.append('../k-wave-python')
+sys.path.append('./k-wave-python')
 import kwave
 import kwave.ktransducer
 from scipy.signal import hilbert
