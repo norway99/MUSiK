@@ -214,7 +214,6 @@ class Simulation:
                 sim_sensor = self.sensor
                 
                 if not dry:                    
-                    # affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
                     affine = transducer.ray_transforms[index] * self.transducer_set.poses[transducer_number]
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
@@ -355,16 +354,11 @@ class Simulation:
     def plot_medium_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
         for transducer_number, transducer in enumerate(self.transducer_set.transducers):
             if index - transducer.get_num_rays() < 0:
-                # affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                # print(transducer.ray_transforms[index].get())
+                # print(self.transducer_set.poses[transducer_number].get())
+                
                 affine = transducer.ray_transforms[index] * self.transducer_set.poses[transducer_number]
-                print('transducer.ray_transforms[index]:')
-                print(transducer.ray_transforms[index].get())
-                print('self.transducer_set.poses[transducer_number]')
-                print(self.transducer_set.poses[transducer_number].get())
-                print('affine')
-                print(affine.get())
-                print('other affine')
-                print((self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]).get())
+                # print(affine.get())
                 
                 steering_angle = transducer.steering_angles[index]
                 self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0])
