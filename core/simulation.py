@@ -214,7 +214,8 @@ class Simulation:
                 sim_sensor = self.sensor
                 
                 if not dry:                    
-                    affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                    # affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                    affine = transducer.ray_transforms[index] * self.transducer_set.poses[transducer_number]
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
@@ -354,7 +355,17 @@ class Simulation:
     def plot_medium_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
         for transducer_number, transducer in enumerate(self.transducer_set.transducers):
             if index - transducer.get_num_rays() < 0:
-                affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                # affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                affine = transducer.ray_transforms[index] * self.transducer_set.poses[transducer_number]
+                print('transducer.ray_transforms[index]:')
+                print(transducer.ray_transforms[index].get())
+                print('self.transducer_set.poses[transducer_number]')
+                print(self.transducer_set.poses[transducer_number].get())
+                print('affine')
+                print(affine.get())
+                print('other affine')
+                print((self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]).get())
+                
                 steering_angle = transducer.steering_angles[index]
                 self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0])
                 sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
@@ -376,11 +387,11 @@ class Simulation:
         ax[0].set_ylabel('y')
         ax[1].set_ylabel('z')
         ax[1].set_xlabel('x')
-        ax[0].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:.3f}'.format(float(x * self.phantom.voxel_dims[0]))))
-        ax[1].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:.3f}'.format(float(x * self.phantom.voxel_dims[0]))))
+        ax[0].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:.3f}'.format(float(x * self.sim_properties.voxel_size[0]))))
+        ax[1].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:.3f}'.format(float(x * self.sim_properties.voxel_size[0]))))
         
-        ax[0].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:.3f}'.format(float(x * self.phantom.voxel_dims[1] - (self.phantom.voxel_dims[1] * sim_phantom.shape[2] / 2)))))
-        ax[1].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:.3f}'.format(float(x * self.phantom.voxel_dims[2] - (self.phantom.voxel_dims[2] * sim_phantom.shape[3] / 2)))))
+        ax[0].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:.3f}'.format(float(x * self.sim_properties.voxel_size[1] - (self.sim_properties.voxel_size[1] * sim_phantom.shape[2] / 2)))))
+        ax[1].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:.3f}'.format(float(x * self.sim_properties.voxel_size[2] - (self.sim_properties.voxel_size[2] * sim_phantom.shape[3] / 2)))))
         if save:
             plt.savefig(save_path)
         elif ax is None:

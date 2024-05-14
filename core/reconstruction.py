@@ -17,7 +17,7 @@ from phantom import Phantom
 from transducer_set import TransducerSet
 from simulation import Simulation, SimProperties
 from sensor import Sensor
-from experiment import Experiment
+from .experiment import Experiment
 
 
 class Reconstruction:
