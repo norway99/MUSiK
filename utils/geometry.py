@@ -11,7 +11,7 @@ class Transform:
     def __init__(self, 
                 rotation = (0,0,0),
                 translation = (0,0,0),
-                rot_vec = False
+                rot_vec = False,
                 intrinsic = True, # define intrinsic or extrinsic while initializing from euler angles
                 ):
         
