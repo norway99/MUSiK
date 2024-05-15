@@ -294,18 +294,29 @@ class Phantom:
         
     
     # voxel_size and matrix_size refer to the size of a voxel (m,m,m) in the computational grid and the matrix size of the computational grid
-    def crop_rotate_crop(self, bounds, transform, voxel_size, matrix_size):
+    def crop_rotate_crop(self, bounds, transducer_transform, ray_transform, voxel_size, matrix_size):
         # keep a running log of discretization bias
         # bias = np.array([0,0,0], dtype=np.float32)
         
         # print(f'bounds: {bounds}')
         # print(f'transformed bounds: {transformed_bounds}')
         
-        rotation = -transform.rotation.as_euler('ZYX')
-        translation = -np.matmul(transform.get(inverse=True)[:3,:3], transform.translation)
-        swapped_transform = geometry.Transform(rotation=rotation, translation=translation)
-        transformed_bounds = swapped_transform.apply_to_points(bounds)
-        # transformed_bounds = transform.apply_to_points(bounds)
+        # rotation = transform.rotation.as_euler('ZYX')
+        # translation = transform.translation + np.matmul(transform.get(inverse=False)[:3,:3], transform.translation)
+        # swapped_transform = geometry.Transform(rotation=rotation, translation=translation)
+        # transformed_bounds = swapped_transform.apply_to_points(bounds)
+        
+        # rotation = geometry.Transform(transform.rotation.as_euler('ZYX'), np.array([0,0,0]))
+        # translation = np.matmul(transform.get(inverse=False)[:3,:3], transform.translation)
+        # transformed_bounds = rotation.apply_to_points(bounds) + translation.reshape(1,3)
+        
+        # rotation = geometry.Transform(transform.rotation.as_euler('ZYX'), np.array([0,0,0]))
+        # translation = np.matmul(transform.get(inverse=False)[:3,:3], transform.translation)
+        # transformed_bounds = rotation.apply_to_points(bounds, inverse=True) + translation.reshape(1,3)
+        transform = ray_transform * transducer_transform
+        backwards_transform = transducer_transform * ray_transform
+        transformed_bounds = backwards_transform.apply_to_points(bounds)
+        # print(translation)
         
         # compute bounding box in global coords that contains the bounds
         first_crop_bounds_coords = np.array([(np.min(transformed_bounds[:,0]), np.max(transformed_bounds[:,0])),
@@ -370,7 +381,8 @@ class Phantom:
             cropped_matrix = medium[:,  first_crop_bounds_indices[0,0]:first_crop_bounds_indices[0,1],
                                         first_crop_bounds_indices[1,0]:first_crop_bounds_indices[1,1],
                                         first_crop_bounds_indices[2,0]:first_crop_bounds_indices[2,1]]
-            
+        
+        print(f'cropped_matrix {cropped_matrix.shape}')
             
         # cropped_matrix = cropped_matrix[...,::-1,::-1,::-1,]        
         # Perform rotation of the cropped region        
@@ -379,15 +391,26 @@ class Phantom:
         else:
             rotated_matrix = transform.rotate_array(cropped_matrix, padwith=self.baseline)
         # rotated_matrix = rotated_matrix[...,::-1,::-1,::-1,]
+        print(f'rotated_matrix {rotated_matrix.shape}')
+        
+        # Perform a translation to correct for off center rotation:
+        # undo_translation = np.matmul(transform.get(inverse=True)[:3,:3], transform.translation)
+        # bias = (translation - undo_translation) / self.voxel_dims
+        # print(translation)
+        # bias = (translation - transform.translation) / self.voxel_dims              # This gets close for some cases but is not correct
+        bias = np.array([rotated_matrix.shape[0]/8,0,0])
         
         # Perform a crop to get the rough grid matrix in global coordinates
-        rough_crop = self.crop_matrix(rotated_matrix, grid_size)
+        rough_crop = self.crop_matrix(rotated_matrix, grid_size, bias=bias)
+        print(f'rough_crop {rough_crop.shape}')
         
         # interpolate up to the correct simulation voxel_size
         sampled_matrix = self.interpolate_up(rough_crop, self.voxel_dims, voxel_size)
         
         # finally perform a final crop to the desired computational matrix_size while correcting for accumulated bias
+        print(f'sampled_matrix {sampled_matrix.shape}')
         final = self.crop_matrix(sampled_matrix, matrix_size)
+        print(f'final {final.shape}')
                         
         # If self from_mask, then sample complete, else, return final
         if self.from_mask:

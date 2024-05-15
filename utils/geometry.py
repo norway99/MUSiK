@@ -145,8 +145,15 @@ class Transform:
     def rotate_array(self, array, padwith=0, inverse=False, order=0):
         padded_array = self.padtocube(array)
         transform = self.__get_matrix(inverse=inverse)
+        
 
         center = np.array(padded_array.shape[-3:])/2
+        # print((padded_array.shape[-3] - array.shape[-3]) / 2)
+        # print(padded_array.shape)
+        # print(array.shape)
+        # center = np.array(((padded_array.shape[-3] - array.shape[-3]) / 2, padded_array.shape[-2] / 2, padded_array.shape[-1] / 2))
+        
+        
         offset = center - self.rotation.apply(center, inverse=True)
         
         if len(padded_array.shape) > 3:
