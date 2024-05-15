@@ -16,47 +16,49 @@ from skimage.morphology import erosion, dilation, opening, closing, white_tophat
 from skimage.morphology import black_tophat, skeletonize, convex_hull_image
 
 
-def read_dicom(dicom_folder_path, unscaled = True, crop = None, axis = None):
-    unscaled_image = []
+def read_dicom(dicom_folder_path, HU = True, crop = None, axis = None):
+    HU_image = []
     slice_position = []
     dicom_path = os.path.join(dicom_folder_path, '*.dcm')
     for dicom in tqdm.tqdm(sorted(glob.glob(dicom_path))):
         dcm = pydicom.dcmread(dicom)
         b = dcm.RescaleIntercept
         m = dcm.RescaleSlope
-        unscaled_image.append(m * dcm.pixel_array + b)
+        HU_image.append(m * dcm.pixel_array + b)
         slice_position.append(dcm.SliceLocation)
         
-    unscaled_image = np.stack(unscaled_image, axis=-1)
+    HU_image = np.stack(HU_image, axis=-1)
     voxel_size = np.array([
         float(dcm.PixelSpacing[0]),
         float(dcm.PixelSpacing[1]),
         np.abs((float(slice_position[0]) - float(slice_position[-1])) / (len(slice_position) - 1))
     ])/1000
 
-    if unscaled: # scale by hounsfield units
-        if crop is not None:
-            if type(crop) is int or len(crop) == 1:
-                if axis is None:
-                    raise Exception("Please specify a cropping axis.")
-                elif axis == 0:
-                    unscaled_image = unscaled_image[:crop, :, :]
-                elif axis == 1:
-                    unscaled_image = unscaled_image[:, :crop, :]
-                elif axis == 2:
-                    unscaled_image = unscaled_image[:, :, :crop]
-                else:
-                    raise Exception("Axis out of bounds.")
-            elif len(crop == 2):
-                unscaled_image = unscaled_image[:crop[0], :crop[1], :]
-            else:
-                unscaled_image = unscaled_image[:crop[0], :crop[1], crop[2]]
+    HU_image = np.where(HU_image > -1000, HU_image, -1000)
 
-        min = np.min(unscaled_image)
-        max = np.max(unscaled_image)
-        image =  255 * (unscaled_image - min)/ (max - min)
+    if crop is not None:
+        if type(crop) is int or len(crop) == 1:
+            if axis is None:
+                raise Exception("Please specify a cropping axis.")
+            elif axis == 0:
+                HU_image = HU_image[:crop, :, :]
+            elif axis == 1:
+                HU_image = HU_image[:, :crop, :]
+            elif axis == 2:
+                HU_image = HU_image[:, :, :crop]
+            else:
+                raise Exception("Axis out of bounds.")
+        elif len(crop == 2):
+            HU_image = HU_image[:crop[0], :crop[1], :]
+        else:
+            HU_image = HU_image[:crop[0], :crop[1], crop[2]]
+
+    if HU: # convert to grayscale
+        min = np.min(HU_image)
+        max = np.max(HU_image)
+        image =  255 * (HU_image - min)/ (max - min)
     else:
-        image = unscaled_image
+        image = HU_image
 
     return image
 
@@ -75,8 +77,7 @@ def flood_fill(fg_mask, slice_end):
                     break
             fg_mask[i_start:i_end, j, slice] = 1
 
-def make_fg_mask(image, use_kmeans = True, fg_threshold = None):
-    slice_end = image.shape[2]
+def make_fg_mask(image, slice_end, use_kmeans = True, fg_threshold = None):
     fg_mask = np.zeros(image.shape)
     for slice in range(slice_end):
         if use_kmeans:
