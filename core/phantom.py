@@ -165,7 +165,7 @@ class Phantom:
         new_phantom = interp(points)
         self.complete = np.stack((new_phantom * self.baseline[0]/self.baseline[1], new_phantom), axis = 0)   
         self.voxel_dims = target_voxel_size
-        self.matrix_dims = new_phantom.shape
+        self.matrix_dims = np.array(new_phantom.shape)
         self.from_mask = False
         self.tissues = {}
         
@@ -295,28 +295,14 @@ class Phantom:
     
     # voxel_size and matrix_size refer to the size of a voxel (m,m,m) in the computational grid and the matrix size of the computational grid
     def crop_rotate_crop(self, bounds, transducer_transform, ray_transform, voxel_size, matrix_size):
-        # keep a running log of discretization bias
-        # bias = np.array([0,0,0], dtype=np.float32)
         
-        # print(f'bounds: {bounds}')
-        # print(f'transformed bounds: {transformed_bounds}')
-        
-        # rotation = transform.rotation.as_euler('ZYX')
-        # translation = transform.translation + np.matmul(transform.get(inverse=False)[:3,:3], transform.translation)
-        # swapped_transform = geometry.Transform(rotation=rotation, translation=translation)
-        # transformed_bounds = swapped_transform.apply_to_points(bounds)
-        
-        # rotation = geometry.Transform(transform.rotation.as_euler('ZYX'), np.array([0,0,0]))
-        # translation = np.matmul(transform.get(inverse=False)[:3,:3], transform.translation)
-        # transformed_bounds = rotation.apply_to_points(bounds) + translation.reshape(1,3)
-        
-        # rotation = geometry.Transform(transform.rotation.as_euler('ZYX'), np.array([0,0,0]))
-        # translation = np.matmul(transform.get(inverse=False)[:3,:3], transform.translation)
-        # transformed_bounds = rotation.apply_to_points(bounds, inverse=True) + translation.reshape(1,3)
         transform = ray_transform * transducer_transform
         backwards_transform = transducer_transform * ray_transform
-        transformed_bounds = backwards_transform.apply_to_points(bounds)
-        # print(translation)
+        
+        rotation = geometry.Transform(transducer_transform.rotation.as_euler('ZYX'), (0,0,0))
+        # transformed_bounds = rotation.apply_to_points(bounds) + transducer_transform.translation.T
+        transformed_bounds = rotation.apply_to_points(bounds) + ray_transform.get()[:3,:3].T @ transducer_transform.translation.T
+        # print((ray_transform.get()[:3,:3] @ transducer_transform.translation.T))
         
         # compute bounding box in global coords that contains the bounds
         first_crop_bounds_coords = np.array([(np.min(transformed_bounds[:,0]), np.max(transformed_bounds[:,0])),
@@ -382,7 +368,7 @@ class Phantom:
                                         first_crop_bounds_indices[1,0]:first_crop_bounds_indices[1,1],
                                         first_crop_bounds_indices[2,0]:first_crop_bounds_indices[2,1]]
         
-        print(f'cropped_matrix {cropped_matrix.shape}')
+        # print(f'cropped_matrix {cropped_matrix.shape}')
             
         # cropped_matrix = cropped_matrix[...,::-1,::-1,::-1,]        
         # Perform rotation of the cropped region        
@@ -391,32 +377,82 @@ class Phantom:
         else:
             rotated_matrix = transform.rotate_array(cropped_matrix, padwith=self.baseline)
         # rotated_matrix = rotated_matrix[...,::-1,::-1,::-1,]
-        print(f'rotated_matrix {rotated_matrix.shape}')
+        # print(f'rotated_matrix {rotated_matrix.shape}')
         
         # Perform a translation to correct for off center rotation:
-        # undo_translation = np.matmul(transform.get(inverse=True)[:3,:3], transform.translation)
-        # bias = (translation - undo_translation) / self.voxel_dims
-        # print(translation)
-        # bias = (translation - transform.translation) / self.voxel_dims              # This gets close for some cases but is not correct
-        bias = np.array([rotated_matrix.shape[0]/8,0,0])
+        # bias = np.array([rotated_matrix.shape[0]/8,0,0])
+        bias = np.array([0,0,0])
         
         # Perform a crop to get the rough grid matrix in global coordinates
         rough_crop = self.crop_matrix(rotated_matrix, grid_size, bias=bias)
-        print(f'rough_crop {rough_crop.shape}')
+        # print(f'rough_crop {rough_crop.shape}')
         
         # interpolate up to the correct simulation voxel_size
         sampled_matrix = self.interpolate_up(rough_crop, self.voxel_dims, voxel_size)
         
         # finally perform a final crop to the desired computational matrix_size while correcting for accumulated bias
-        print(f'sampled_matrix {sampled_matrix.shape}')
+        # print(f'sampled_matrix {sampled_matrix.shape}')
         final = self.crop_matrix(sampled_matrix, matrix_size)
-        print(f'final {final.shape}')
+        # print(f'final {final.shape}')
                         
         # If self from_mask, then sample complete, else, return final
         if self.from_mask:
             final = self.make_complete(mask=final, voxel_size=voxel_size)
         
         return final
+    
+    
+    def interpolate_phantom(self, bounds, transform, voxel_size, matrix_size):
+
+        # Calculate a list of grid points in the final matrix
+        # Calculate the coordinates of the grid points in the final matrix
+        # Perform the inverse transform of the coordinates to global coordinates
+        # Perform the nearest neighbor interpolation of the global coordinates to the phantom matrix
+        # matrix_size = np.transpose(matrix_size, (1,0,2))
+        
+        # X,Y,Z = np.meshgrid(np.linspace(bounds[0][0], bounds[-1][0], matrix_size[0]),
+        #                     np.linspace(bounds[0][1], bounds[-1][1], matrix_size[1]),
+        #                     np.linspace(bounds[0][2], bounds[-1][2], matrix_size[2]), indexing='ij')
+        
+        X,Y,Z = np.meshgrid(np.linspace(bounds[0][0], bounds[-1][0], matrix_size[0]),
+                            np.linspace(bounds[0][1], bounds[-1][1], matrix_size[1]),
+                            np.linspace(bounds[0][2], bounds[-1][2], matrix_size[2]), indexing='ij')
+        
+        print(f'X {X.shape}')
+        print(f'Y {Y.shape}')
+        print(f'Z {Z.shape}')
+
+        local_points = np.stack((X.flatten(), Y.flatten(), Z.flatten()), axis=-1)
+        print(f'local_points {local_points[0]}, {local_points[-1]}')
+        print(f'local_points {local_points.shape}')
+
+        # transform = ray_transform * transducer_transform
+        
+        global_points = transform.apply_to_points(local_points, inverse=False)
+        
+        global_indices = global_points / self.voxel_dims.T + self.matrix_dims.T / 2
+        print(f'global_indices {global_indices[0]}, {global_indices[-1]}')
+        print(f'global_indices {global_indices.shape}')
+        
+        y,x,z = np.arange(self.matrix_dims[0]), np.arange(self.matrix_dims[1]), np.arange(self.matrix_dims[2])
+        xyz = np.stack(np.meshgrid(x,y,z, indexing='ij'), axis=-1).reshape(-1,3)
+        print(f'xyz {xyz.shape}')
+        print(f'flat mask {self.mask.flatten().shape}')
+        
+        if self.from_mask:
+            interp = NearestNDInterpolator(xyz, self.mask.flatten())
+            final_mask = interp(list(global_indices)).reshape(matrix_size)
+            final = self.make_complete(mask=final_mask, voxel_size=voxel_size)
+        else:
+            interp_sos = NearestNDInterpolator((x,y,z), self.get_complete()[0])
+            interp_density = NearestNDInterpolator((x,y,z), self.get_complete()[1])
+            final_sos = interp_sos(global_indices).reshape((2,) + matrix_size)
+            final_density = interp_density(global_indices).reshape((2,) + matrix_size)
+            final = np.stack((final_sos, final_density), axis=0)
+        # final = np.transpose(final, (0,2,1,3))
+                        
+        return final
+    
     
     
     # # voxel_size and matrix_size refer to the size of a voxel (m,m,m) in the computational grid and the matrix size of the computational grid

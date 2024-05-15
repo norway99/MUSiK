@@ -142,14 +142,7 @@ class SimProperties:
     
     def calc_bounding_vertices(self, matrix_size, PML_size, voxel_dims):
         new_grid_size = (np.array(matrix_size) - 2 * np.array(PML_size)) * np.array(voxel_dims)
-        # --------------------------------- #
-        new_grid_size[0] = new_grid_size[0] * 2
-        centroid = (new_grid_size[0]/2, new_grid_size[1]/2, new_grid_size[2]/2)
-        print(f'new_grid_size {new_grid_size}')
-        print(f'centroid {centroid}')
-        # --------------------------------- #
-        # centroid = (0, new_grid_size[1]/2, new_grid_size[2]/2)
-        # --------------------------------- #
+        centroid = (0, new_grid_size[1]/2, new_grid_size[2]/2)
         
         # new_grid_size = np.array(matrix_size) * np.array(voxel_dims)
         # centroid = (PML_size[0], new_grid_size[1]/2, new_grid_size[2]/2)
@@ -223,7 +216,8 @@ class Simulation:
                 if not dry:                    
                     affine = transducer.ray_transforms[index] * self.transducer_set.poses[transducer_number]
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
-                    sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
+                    # sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
+                    sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
                     print('preparation for sim {:4d} completed in {:15.2f} seconds\n'.format(self.index, round(time.time() - start_time, 3)))
                     return prepped
@@ -369,8 +363,8 @@ class Simulation:
                 
                 steering_angle = transducer.steering_angles[index]
                 self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0])
-                # sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
-                sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, self.transducer_set.poses[transducer_number], transducer.ray_transforms[index], self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
+                # sim_phantom = self.phantom.crop_rotate_crop(self.sim_properties.bounds, self.transducer_set.poses[transducer_number], transducer.ray_transforms[index], self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
+                sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                 break
             else:
                 index -= transducer.get_num_rays()
