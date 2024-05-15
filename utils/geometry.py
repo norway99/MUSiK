@@ -11,11 +11,14 @@ class Transform:
     def __init__(self, 
                 rotation = (0,0,0),
                 translation = (0,0,0),
+                rot_vec = False
                 intrinsic = True, # define intrinsic or extrinsic while initializing from euler angles
                 ):
         
         # initialize from rotation and translation
-        if intrinsic:
+        if rot_vec:
+            self.rotation = scipy.spatial.transform.Rotation.from_rotvec(rotation)
+        elif intrinsic:                
             self.rotation = scipy.spatial.transform.Rotation.from_euler("ZYX", rotation, degrees=False)  # intrinsic
         else:
             self.rotation = scipy.spatial.transform.Rotation.from_euler("zyx", rotation, degrees=False)  # extrinsic

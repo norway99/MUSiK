@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import sys
 sys.path.append('../utils')
+import open3d as o3d
+from open3d import io, visualization
 
 import geometry
 import utils
@@ -100,14 +102,47 @@ class TransducerSet:
         
     def assign_pose(self, index, transform):
         assert index <= len(self), "Index out of range. No transducer exists at index {}.".format(index)
-        self.poses[index] = transform
-    
+        self.poses[index] = transform    
     
     def remove_pose(self, index):
         print('removing poses without removing transducers is not supported, either overwrite the pose (assign_pose) or remove the transducer (remove_transducer)')
-        return 0   
-                 
-                    
+        return 0  
+
+    def _snap_to_surface(point, surface):
+        scene = o3d.t.geometry.RaycastingScene()
+        _ = scene.add_triangles(surface)
+        query_pt = o3d.core.Tensor([point], dtype=o3d.core.Dtype.Float32)
+        closest_pt = scene.compute_closest_points(query_pt)
+        closest_triangle = closest_pt['primitive_ids'][0].item()
+        return closest_pt['points'].numpy(), closest_triangle
+    
+    def place_transducer(self, transducer_index, surface_mesh, theta, vertex_id = None, triangle_id = None, point = None):
+        if surface_mesh is None:
+            raise Exception("Must provide a surface on which to place the transducer")
+        if vertex_id is None and triangle_id is None and point is None:
+            raise Exception("Must provide a heuristic for transducer placement")
+        if not isinstance(surface_mesh, open3d.cpu.pybind.t.geometry.TriangleMesh)
+            surface_mesh = o3d.t.geometry.TriangleMesh.from_legacy(surface_mesh)
+        surface_mesh.compute_vertex_normals()
+        surface_mesh.compute_triangle_normals()
+        surface_mesh.normalize_normals()
+        if vertex_id is not None:
+            pt = surface_mesh.vertex.positions[vertex_id]
+            normal= surface_mesh.vertex.normals[vertex_id]
+        else:   
+            if triangle_id is not None:
+                normal = surface_mesh.triangle.normals[triangle_id]
+                triangle_vertices = surface_mesh.triangle.indices[triangle_id].numpy()
+                triangle_vertex_coords = np.vstack(surface_mesh.vertex.positions[triangle_vertices[0]].numpy(), 
+                                                   surface_mesh.vertex.positions[triangle_vertices[1]].numpy(),
+                                                   surface_mesh.vertex.positions[triangle_vertices[2]].numpy())
+                pt = np.mean(triangle_vertex_coords, axis=0)
+            else:
+                pt, id = self._snap_to_surface([point], surface_mesh)
+                normal = surface_mesh.triangle.normals[id]
+  
+        self.assign_pose(index, geometry.Transform(-theta*normal, pt, rotvec = True))
+
     def find_transducer(self, label):
         ctr = 0
         for transducer in self.transducers:
@@ -146,26 +181,7 @@ class TransducerSet:
     def get_poses(self):
         return self.poses
 
-    # def build_sensor_mask(self, transmit, transmit_transform, aperture, kgrid) -> np.ndarray:
 
-    #     sensor_mask = transmit.not_transducer.indexed_mask
-
-    #     all_sensor_coords = np.empty(1, 3)
-        
-    #     for key in aperture:
-    #         t = self.transducers[key]
-    #         p = self.poses[key]
-    #         sensor_coords = t.get_sensor_coords()
-    #         transformed_sensor_coords = transmit_transform.apply_to_points(p.apply_to_points(sensor_coords, inverse=True))
-    #         all_sensor_coords = np.vstack((all_sensor_coords, np.ndarray.astype(np.round(transformed_sensor_coords), int)))
-    #         for coord in transformed_sensor_coords:
-    #             sensor_mask[coord[0], coord[1], coord[2]] = 1
-
-    #     all_sensor_coords = all_sensor_coords[1:, :]
-                
-    #     return sensor_mask, all_sensor_coords
-        
-        
     def plot_transducer_coords(self, ax=None, save=False, save_path=None, scale=0.1):
         if ax is None:
             fig = plt.figure()
