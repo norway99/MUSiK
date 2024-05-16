@@ -104,8 +104,8 @@ class Phantom:
         source = utils.json_to_dict(source_path+'/source.json')
         
         phantom.rng = np.random.default_rng(source['seed'])
-        phantom.voxel_dims = source['voxel_dims']
-        phantom.matrix_dims = source['matrix_dims']
+        phantom.voxel_dims = np.array(source['voxel_dims'])
+        phantom.matrix_dims = np.array(source['matrix_dims'])
         phantom.from_mask = source['from_mask']
         phantom.baseline = source['baseline']
         phantom.default_tissue = source['default_tissue']
@@ -164,7 +164,7 @@ class Phantom:
         
         new_phantom = interp(points)
         self.complete = np.stack((new_phantom * self.baseline[0]/self.baseline[1], new_phantom), axis = 0)   
-        self.voxel_dims = target_voxel_size
+        self.voxel_dims = np.array(target_voxel_size)
         self.matrix_dims = np.array(new_phantom.shape)
         self.from_mask = False
         self.tissues = {}

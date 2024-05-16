@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import tqdm
 import sys
 import multiprocessing
-from scipy.interpolate import LinearNDInterpolator
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 sys.path.append('../utils')
 import time
 
@@ -85,26 +85,6 @@ class DAS(Reconstruction):
         coords = transform.apply_to_points(dists)
         return coords
     
-        
-    # def preprocess_data(self,):
-    #     coords = []
-    #     time = []
-    #     processed = []
-    #     transducer_count = 0
-    #     transducer, transducer_transform = self.transducer_set[transducer_count]
-    #     transform = transducer_transform
-    #     running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
-    #     for index in tqdm.tqdm(range(len(self.results))):
-    #         if index > (running_index_list[transducer_count] - 1):
-    #             transducer_count += 1
-    #             transducer, transducer_transform = self.transducer_set[transducer_count]
-    #         transform = transducer_transform * transducer.ray_transforms[index - running_index_list[transducer_count]]
-    #         # self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, sos=self.phantom.baseline[0])
-    #         processed.append(transducer.preprocess(transducer.make_scan_line(self.results[index][1]), self.results[index][0], self.sim_properties))
-    #         coords.append(self.__time_to_coord(self.results[index][0], transform))
-    #         time.append(self.results[index][0])
-            
-    #     return time, coords, processed
 
     def process_line(self, index, transducer, transform, transmit_as_receive=True):
         processed = transducer.preprocess(transducer.make_scan_line(self.results[index][1], transmit_as_receive), self.results[index][0], self.sim_properties)
@@ -113,7 +93,7 @@ class DAS(Reconstruction):
         return times, coords, processed
 
 
-    def preprocess_data(self, workers=8):
+    def preprocess_data(self, global_transforms=True, workers=8):
         transducer_count = 0
         transducer, transducer_transform = self.transducer_set[transducer_count]
         running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
@@ -125,7 +105,10 @@ class DAS(Reconstruction):
             if index > running_index_list[transducer_count] - 1:
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
-            transform = transducer_transform * transducer.ray_transforms[index - running_index_list[transducer_count]]
+            if global_transforms:
+                transform = transducer_transform * transducer.ray_transforms[index - running_index_list[transducer_count]]
+            else:
+                transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
             
             indices.append(index)
             transducers.append(transducer)
@@ -226,7 +209,7 @@ class DAS(Reconstruction):
                 interp = LinearNDInterpolator(subset_coords[:,:2], subset_processed)
                 signals.append(interp(X, Y))
             else:
-                interp = LinearNDInterpolator(subset_coords, subset_processed)
+                interp = NearestNDInterpolator(subset_coords, subset_processed)
                 signals.append(interp(X, Y, Z))
             count += transducer.get_num_rays()
         
@@ -236,6 +219,62 @@ class DAS(Reconstruction):
         image = image.filled(np.nan)
         
         return image, signals
+    
+    
+    def get_signals(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8):
+        assert dimensions in [2,3], print("Image can be 2 or 3 dimensional")
+        assert (downsample > 0 and downsample <= 1), print("Downsample must be a float on (0,1]")
+        
+        times, coords, processed = self.preprocess_data(global_transforms=False, workers=workers)
+        coords = np.stack(coords, axis=0)
+        processed = np.stack(processed, axis=0)
+
+        if bounds is None:
+            flat_coords = coords.reshape(-1,3)
+            bounds = np.array([(np.min(flat_coords[:,0]),np.max(flat_coords[:,0])),
+                            (np.min(flat_coords[:,1]),np.max(flat_coords[:,1])),
+                            (np.min(flat_coords[:,2]),np.max(flat_coords[:,2]))])
+        elif type(bounds) == list or type(bounds) == tuple or type(bounds) == np.ndarray:
+            bounds = np.array(bounds)
+        elif type(bounds) == float:
+            bounds = np.array([(-bounds,bounds),(-bounds,bounds),(-bounds,bounds)])
+        else:
+            print("provide bounds as a list, tuple, numpy array, or float")
+            return 0
+
+        X = np.linspace(bounds[0,0], bounds[0,1], matsize)
+        Y = np.linspace(bounds[1,0], bounds[1,1], matsize)
+        Z = np.linspace(bounds[2,0], bounds[2,1], matsize)
+        
+        if dimensions == 2:
+            X, Y = np.meshgrid(X, Y, indexing='ij') # worked before changing indexing to ij so maybe take this out if it doesn't work anymore :/
+        else:
+            X, Y, Z = np.meshgrid(X, Y, Z, indexing='ij')
+
+        signals = []
+        count = 0
+        for transducer in tqdm.tqdm(self.transducer_set.transducers):
+            subset_coords = coords[count:(count+transducer.get_num_rays()),:].reshape(-1,3)
+            subset_processed = processed[count:(count+transducer.get_num_rays())].reshape(-1)
+            
+            if downsample != 1:
+                subset_coords = subset_coords[::int(1/downsample)]
+                subset_processed = subset_processed[::int(1/downsample)]
+                            
+            if dimensions == 2:
+                interp = LinearNDInterpolator(subset_coords[:,:2], subset_processed)
+                signals.append(interp(X, Y))
+            else:
+                interp = NearestNDInterpolator(subset_coords, subset_processed)
+                signals.append(interp(X, Y, Z))
+            count += transducer.get_num_rays()
+        
+        # combined_signals = np.stack(signals, axis=0)
+        # masked_signals = np.ma.masked_array(combined_signals, np.isnan(combined_signals))
+        # image = np.ma.average(masked_signals, axis=0)
+        # image = image.filled(np.nan)
+        
+        return signals
         
         
         
