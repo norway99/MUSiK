@@ -22,8 +22,12 @@ def read_dicom(dicom_folder_path, HU = True, crop = None, axis = None):
     dicom_path = os.path.join(dicom_folder_path, '*.dcm')
     for dicom in tqdm.tqdm(sorted(glob.glob(dicom_path))):
         dcm = pydicom.dcmread(dicom)
-        b = dcm.RescaleIntercept
-        m = dcm.RescaleSlope
+        b = 0
+        m = 1
+        if hasattr(dcm, "RescaleIntercept"):
+            b = dcm.RescaleIntercept
+        if hasattr(dcm, "RescaleSlope"):
+            m = dcm.RescaleSlope
         HU_image.append(m * dcm.pixel_array + b)
         slice_position.append(dcm.SliceLocation)
         
@@ -60,24 +64,39 @@ def read_dicom(dicom_folder_path, HU = True, crop = None, axis = None):
     else:
         image = HU_image
 
-    return image
+    return image, voxel_size
 
-def flood_fill(fg_mask, slice_end):
+def open(image, footprint_size, footprint_shape = 'disk'):
+    if footprint_shape == 'rectangle':
+        if isinstance(footprint_size, int) or isinstsance(footprint_size, float):
+            footprint = rectangle(footprint_size, footprint_size)
+        else:
+            footprint = rectangle(footprint_size[0], footprint_size[1])
+    else:    
+        footprint = disk(footprint_size)
+    opened = image
+    for i in range(image.shape[2]):
+        opened[:, :, i] = opening(image[:, :, i], footprint)
+    return opened
+
+def flood_fill(image, slice_end):
+    new_image = image
     for slice in range(slice_end):  
-        for j in range(fg_mask.shape[1]):
+        for j in range(new_image.shape[1]):
             i_start = 0
             i_end = 0
-            for i in range(fg_mask.shape[0]):
-                if fg_mask[i, j, slice] == 1:
+            for i in range(new_image.shape[0]):
+                if new_image[i, j, slice] > 0:
                     i_start = i
                     break
-            for i in range(1, fg_mask.shape[0]+1):
-                if fg_mask[-i, j, slice] == 1:
+            for i in range(1, new_image.shape[0]+1):
+                if new_image[-i, j, slice] > 0:
                     i_end = -i
                     break
-            fg_mask[i_start:i_end, j, slice] = 1
+            new_image[i_start:i_end, j, slice] = 1
+    return new_image
 
-def make_fg_mask(image, slice_end, use_kmeans = True, fg_threshold = None):
+def make_fg_mask(image, slice_end, use_kmeans = False, fg_threshold = None):
     fg_mask = np.zeros(image.shape)
     for slice in range(slice_end):
         if use_kmeans:
@@ -88,13 +107,16 @@ def make_fg_mask(image, slice_end, use_kmeans = True, fg_threshold = None):
                 raise Exception("Please supply a threshold pixel value.")
         fg_mask[:, :, slice] = np.where(image[:, :, slice] > fg_threshold, 1, 0)
 
-    flood_fill(fg_mask, slice_end)
+    fg_mask = flood_fill(fg_mask, slice_end)
     return fg_mask
 
-def make_surface_mesh(fg_mask, save_path):
+def make_surface_mesh(fg_mask, voxel_size, save_path):
 
     smoothed_mask = mcubes.smooth(fg_mask)
     vertices, triangles = mcubes.marching_cubes(smoothed_mask, 0)
+    vertices = vertices * np.array([voxel_size[0], 1., 1.])
+    vertices = vertices * np.array([1., voxel_size[1], 1.])
+    vertices = vertices * np.array([1., 1., voxel_size[2]]) 
     mcubes.export_obj(vertices, triangles, save_path) # this works well 
     return vertices, triangles
 
