@@ -86,14 +86,14 @@ class DAS(Reconstruction):
         return coords
     
 
-    def process_line(self, index, transducer, transform, transmit_as_receive=True):
-        processed = transducer.preprocess(transducer.make_scan_line(self.results[index][1], transmit_as_receive), self.results[index][0], self.sim_properties)
+    def process_line(self, index, transducer, transform, transmit_as_receive=True, attenuation_factor=1):
+        processed = transducer.preprocess(transducer.make_scan_line(self.results[index][1], transmit_as_receive), self.results[index][0], self.sim_properties, attenuation_factor=attenuation_factor)
         coords = self.__time_to_coord(self.results[index][0], transform)
         times = self.results[index][0]
         return times, coords, processed
 
 
-    def preprocess_data(self, global_transforms=True, workers=8):
+    def preprocess_data(self, global_transforms=True, workers=8, attenuation_factor=1):
         transducer_count = 0
         transducer, transducer_transform = self.transducer_set[transducer_count]
         running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
@@ -101,6 +101,7 @@ class DAS(Reconstruction):
         indices = []
         transducers = []
         transforms = []
+        transmit_as_receive = []
         for index in range(len(self.results)):
             if index > running_index_list[transducer_count] - 1:
                 transducer_count += 1
@@ -113,19 +114,22 @@ class DAS(Reconstruction):
             indices.append(index)
             transducers.append(transducer)
             transforms.append(transform)
-        
+            
+                
         results = []
-        inputs = list(zip(indices, transducers, transforms))
+        sensor_receive = [self.sensor.aperture_type == "transmit_as_receive" for i in range(len(self.results))]
+        attenuation_factor = [attenuation_factor for i in range(len(self.results))]
+        inputs = list(zip(indices, transducers, transforms, sensor_receive, attenuation_factor))
         starttime = time.time()
+        
         
         if workers > 1:
             with multiprocessing.Pool(8) as p:
                 results = p.starmap(self.process_line, tqdm.tqdm(inputs, total=len(indices)))
         else:
             for input_data in inputs:
-                results.append(self.process_line(input_data[0],input_data[1],input_data[2]))
+                results.append(self.process_line(input_data[0],input_data[1],input_data[2], input_data[3], input_data[4]))
         
-        print(f'multiproc time {time.time() - starttime}')
         times = [r[0] for r in results]
         coords = [r[1] for r in results]
         processed = [r[2] for r in results]
@@ -165,11 +169,11 @@ class DAS(Reconstruction):
         ax.set_aspect('equal')
         
 
-    def get_image(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8):
+    def get_image(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8, attenuation_factor=1):
         assert dimensions in [2,3], print("Image can be 2 or 3 dimensional")
         assert (downsample > 0 and downsample <= 1), print("Downsample must be a float on (0,1]")
         
-        times, coords, processed = self.preprocess_data(workers=workers)
+        times, coords, processed = self.preprocess_data(workers=workers, attenuation_factor=attenuation_factor)
         coords = np.stack(coords, axis=0)
         processed = np.stack(processed, axis=0)
 
@@ -221,11 +225,11 @@ class DAS(Reconstruction):
         return image, signals
     
     
-    def get_signals(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8):
+    def get_signals(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8, tgc=1):
         assert dimensions in [2,3], print("Image can be 2 or 3 dimensional")
         assert (downsample > 0 and downsample <= 1), print("Downsample must be a float on (0,1]")
         
-        times, coords, processed = self.preprocess_data(global_transforms=False, workers=workers)
+        times, coords, processed = self.preprocess_data(global_transforms=False, workers=workers, attenuation_factor=tgc)
         coords = np.stack(coords, axis=0)
         processed = np.stack(processed, axis=0)
 
@@ -241,10 +245,12 @@ class DAS(Reconstruction):
         else:
             print("provide bounds as a list, tuple, numpy array, or float")
             return 0
+        
 
-        X = np.linspace(bounds[0,0], bounds[0,1], matsize)
-        Y = np.linspace(bounds[1,0], bounds[1,1], matsize)
-        Z = np.linspace(bounds[2,0], bounds[2,1], matsize)
+        bounds_avg = (bounds[0,1] - bounds[0,0] + bounds[1,1] - bounds[1,0] + bounds[2,1] - bounds[2,0])/3
+        X = np.linspace(bounds[0,0], bounds[0,1], int((bounds[0,1]-bounds[0,0]) / bounds_avg * matsize))
+        Y = np.linspace(bounds[1,0], bounds[1,1], int((bounds[1,1]-bounds[1,0]) / bounds_avg * matsize))
+        Z = np.linspace(bounds[2,0], bounds[2,1], int((bounds[2,1]-bounds[2,0]) / bounds_avg * matsize))
         
         if dimensions == 2:
             X, Y = np.meshgrid(X, Y, indexing='ij') # worked before changing indexing to ij so maybe take this out if it doesn't work anymore :/
@@ -268,11 +274,6 @@ class DAS(Reconstruction):
                 interp = NearestNDInterpolator(subset_coords, subset_processed)
                 signals.append(interp(X, Y, Z))
             count += transducer.get_num_rays()
-        
-        # combined_signals = np.stack(signals, axis=0)
-        # masked_signals = np.ma.masked_array(combined_signals, np.isnan(combined_signals))
-        # image = np.ma.average(masked_signals, axis=0)
-        # image = image.filled(np.nan)
         
         return signals
         
@@ -340,11 +341,8 @@ class Compounding(Reconstruction):
 
             dt = (self.results[index][0][-1] - self.results[index][0][0]) / self.results[index][0].shape[0]
             preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
-            # middle_element = transducer.elements // 2
-            # if transducer.elements % 2 == 0:
-            #     middle_element = middle_element - 0.5
+            
             t_start = int(np.ceil(transducer.width / 2 *  np.abs(np.sin(steering_angle)) / c0 / dt + len(transducer.get_pulse())/2))
-            # preprocessed_data = preprocessed_data[:, t_start:] 
             
             if len(preprocessed_data.shape) == 2:
                 preprocessed_data = preprocessed_data[:, t_start:]

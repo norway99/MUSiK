@@ -419,13 +419,13 @@ class Transducer:
         return scan_lines
         
         
-    def gain_compensation(self, scan_lines, t_array, sim_properties) -> np.ndarray:
+    def gain_compensation(self, scan_lines, t_array, sim_properties, attenuation_factor=1) -> np.ndarray:
         l = self.get_pulse().shape[-1]
         t0 = l * (t_array[-1] / t_array.shape[0]) / 2
         r = 1540 * (t_array / 2 - t0)
         alpha_db_cm = sim_properties.alpha_coeff * self.get_freq() ** sim_properties.alpha_power
         alpha_np_m = alpha_db_cm / 8.686 / 100 / 1e6
-        tgc = np.exp(alpha_np_m * 2 * r)
+        tgc = np.exp(alpha_np_m * 2 * r * attenuation_factor)
         rf = np.multiply(tgc, scan_lines)
         return rf
 
@@ -435,16 +435,15 @@ class Transducer:
         return env
     
     
-    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4,) -> np.ndarray:
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
-        scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties)
+        scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
         scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)
         scan_lines = self.envelope_detection(scan_lines)
         scan_lines = self.window(scan_lines, window_factor)
         if self.compression_fac is not None:
             scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
         return scan_lines
-        
         
         
 class Focused(Transducer):

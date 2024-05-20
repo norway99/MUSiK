@@ -403,41 +403,18 @@ class Phantom:
     
     
     def interpolate_phantom(self, bounds, transform, voxel_size, matrix_size):
-
-        # Calculate a list of grid points in the final matrix
-        # Calculate the coordinates of the grid points in the final matrix
-        # Perform the inverse transform of the coordinates to global coordinates
-        # Perform the nearest neighbor interpolation of the global coordinates to the phantom matrix
-        # matrix_size = np.transpose(matrix_size, (1,0,2))
-        
-        # X,Y,Z = np.meshgrid(np.linspace(bounds[0][0], bounds[-1][0], matrix_size[0]),
-        #                     np.linspace(bounds[0][1], bounds[-1][1], matrix_size[1]),
-        #                     np.linspace(bounds[0][2], bounds[-1][2], matrix_size[2]), indexing='ij')
-        
         X,Y,Z = np.meshgrid(np.linspace(bounds[0][0], bounds[-1][0], matrix_size[0]),
                             np.linspace(bounds[0][1], bounds[-1][1], matrix_size[1]),
                             np.linspace(bounds[0][2], bounds[-1][2], matrix_size[2]), indexing='ij')
-        
-        print(f'X {X.shape}')
-        print(f'Y {Y.shape}')
-        print(f'Z {Z.shape}')
 
         local_points = np.stack((X.flatten(), Y.flatten(), Z.flatten()), axis=-1)
-        print(f'local_points {local_points[0]}, {local_points[-1]}')
-        print(f'local_points {local_points.shape}')
-
-        # transform = ray_transform * transducer_transform
         
         global_points = transform.apply_to_points(local_points, inverse=False)
         
         global_indices = global_points / self.voxel_dims.T + self.matrix_dims.T / 2
-        print(f'global_indices {global_indices[0]}, {global_indices[-1]}')
-        print(f'global_indices {global_indices.shape}')
         
         y,x,z = np.arange(self.matrix_dims[0]), np.arange(self.matrix_dims[1]), np.arange(self.matrix_dims[2])
         xyz = np.stack(np.meshgrid(x,y,z, indexing='ij'), axis=-1).reshape(-1,3)
-        print(f'xyz {xyz.shape}')
-        print(f'flat mask {self.mask.flatten().shape}')
         
         if self.from_mask:
             interp = NearestNDInterpolator(xyz, self.mask.flatten())
@@ -449,122 +426,10 @@ class Phantom:
             final_sos = interp_sos(global_indices).reshape((2,) + matrix_size)
             final_density = interp_density(global_indices).reshape((2,) + matrix_size)
             final = np.stack((final_sos, final_density), axis=0)
-        # final = np.transpose(final, (0,2,1,3))
                         
         return final
     
     
-    
-    # # voxel_size and matrix_size refer to the size of a voxel (m,m,m) in the computational grid and the matrix size of the computational grid
-    # def crop_rotate_crop(self, bounds, transform, voxel_size, matrix_size):
-    #     # keep a running log of discretization bias
-    #     bias = np.array([0,0,0], dtype=np.float32)
-        
-    #     # need to swap order of rotation and translation according to homogeneous coordinates convention
-    #     rotation = -transform.rotation.as_euler('ZYX')
-    #     translation = -np.matmul(transform.get(inverse=True)[:3,:3], transform.translation)
-    #     swapped_transform = geometry.Transform(rotation=rotation, translation=translation)
-    #     transform = swapped_transform
-    #     transformed_bounds = transform.apply_to_points(bounds, inverse=True) # need to edit this - homogeneous matrix definitions should be double checked
-        
-    #     # compute bounding box in global coords that contains the bounds
-    #     first_crop_bounds_coords = np.array([(np.min(transformed_bounds[:,0]), np.max(transformed_bounds[:,0])),
-    #                                         (np.min(transformed_bounds[:,1]), np.max(transformed_bounds[:,1])),
-    #                                         (np.min(transformed_bounds[:,2]), np.max(transformed_bounds[:,2]))])
-        
-    #     # convert bounding coords to matrix indices so as to crop
-    #     first_crop_bounds_indices = (first_crop_bounds_coords / np.broadcast_to(self.voxel_dims, (2,3)).T + np.broadcast_to(self.matrix_dims, (2,3)).T/2)
-    #     first_crop_bounds_indices[:,0] = np.floor(first_crop_bounds_indices[:,0])
-    #     first_crop_bounds_indices[:,1] = np.ceil(first_crop_bounds_indices[:,1])
-    #     first_crop_bounds_indices = first_crop_bounds_indices.astype(np.int32)
-    #     # buffer = np.amax(matrix_size) // 100
-    #     # print(f'buffer {buffer}')
-    #     # first_crop_bounds_indices = np.stack((first_crop_bounds_indices[:,0] - 5, first_crop_bounds_indices[:,1] + 5)).T # helpful to extend the initial cropped region slightly to avoid discretization truncation error
-        
-        
-    #     # Given some bounds of the computational region, crop a cube centered at the same centroid, ithe long (diagonal) hypotenuse of the 
-        
-    #     bias += np.mean(first_crop_bounds_indices.astype(np.float32), axis=1) * self.voxel_dims - np.mean(first_crop_bounds_coords, axis=1)    
-            
-    #     # If self from_mask or self_from image, get either the mask or the matrix
-    #     if self.from_mask:
-    #         medium = self.mask
-    #         if self.default_tissue is not None:
-    #             tissue_fill = self.default_tissue
-    #         else:
-    #             tissue_fill = 0
-    #     else:
-    #         medium = self.get_complete() # retrieve the matrix to transform - This should really be mask not complete in most cases
-        
-    #     # pad if indices extend out of the computational region
-    #     pad_x = max(-first_crop_bounds_indices[0,0], first_crop_bounds_indices[0,1] - self.matrix_dims[0], 0)
-    #     pad_y = max(-first_crop_bounds_indices[1,0], first_crop_bounds_indices[1,1] - self.matrix_dims[1], 0)
-    #     pad_z = max(-first_crop_bounds_indices[2,0], first_crop_bounds_indices[2,1] - self.matrix_dims[2], 0)
-        
-    #     if self.from_mask:
-    #         if pad_x:
-    #             medium = np.pad(medium, ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=tissue_fill)
-    #         if pad_y:
-    #             medium = np.pad(medium, ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=tissue_fill)
-    #         if pad_z:
-    #             medium = np.pad(medium, ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=tissue_fill)
-    #     else:
-    #         if pad_x:
-    #             medium = np.stack(
-    #                 (np.pad(medium[0], ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=(self.baseline[0],)),
-    #                     np.pad(medium[1], ((pad_x,pad_x),(0,0),(0,0)), 'constant', constant_values=(self.baseline[1],))),
-    #                 axis=0)
-    #         if pad_y:
-    #             medium = np.stack(
-    #                 (np.pad(medium[0], ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=(self.baseline[0],)),
-    #                     np.pad(medium[1], ((0,0),(pad_y,pad_y),(0,0)), 'constant', constant_values=(self.baseline[1],))),
-    #                 axis=0)
-    #         if pad_z:
-    #             medium = np.stack(
-    #                 (np.pad(medium[0], ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=(self.baseline[0],)),
-    #                     np.pad(medium[1], ((0,0),(0,0),(pad_z,pad_z)), 'constant', constant_values=(self.baseline[1],))),
-    #                 axis=0)
-
-    #     first_crop_bounds_indices = first_crop_bounds_indices + np.stack((np.array((pad_x, pad_y, pad_z)),np.array((pad_x, pad_y, pad_z)))).T
-
-    #     # compute the grid size:
-    #     grid_size = matrix_size * voxel_size / self.voxel_dims
-        
-    #     if self.from_mask:
-    #         cropped_matrix = medium[first_crop_bounds_indices[0,0]:first_crop_bounds_indices[0,1],
-    #                                 first_crop_bounds_indices[1,0]:first_crop_bounds_indices[1,1],
-    #                                 first_crop_bounds_indices[2,0]:first_crop_bounds_indices[2,1]]
-    #     else:
-    #         cropped_matrix = medium[:,  first_crop_bounds_indices[0,0]:first_crop_bounds_indices[0,1],
-    #                                     first_crop_bounds_indices[1,0]:first_crop_bounds_indices[1,1],
-    #                                     first_crop_bounds_indices[2,0]:first_crop_bounds_indices[2,1]]
-                                
-    #     # Perform rotation of the cropped region
-    #     if self.from_mask:
-    #         rotated_matrix = transform.rotate_array(cropped_matrix, padwith=0)
-    #     else:
-    #         rotated_matrix = transform.rotate_array(cropped_matrix, padwith=self.baseline)
-    #     bias = np.matmul(transform.get(inverse=False)[:3,:3], bias).squeeze()
-        
-    #     # Perform a crop to get the rough grid matrix in global coordinates
-    #     rough_crop = self.crop_matrix(rotated_matrix, grid_size)
-    #     bias = bias + self.compute_bias(np.array(rotated_matrix.shape[-3:]), matrix_size) * self.voxel_dims
-        
-    #     # interpolate up to the correct simulation voxel_size
-    #     sampled_matrix = self.interpolate_up(rough_crop, self.voxel_dims, voxel_size)
-    #     bias = bias / voxel_size / matrix_size
-        
-    #     # finally perform a final crop to the desired computational matrix_size while correcting for accumulated bias
-    #     # final = self.crop_matrix(sampled_matrix, matrix_size, bias=bias)
-    #     final = self.crop_matrix(sampled_matrix, matrix_size)
-                        
-    #     # If self from_mask, then sample complete, else, return final
-    #     if self.from_mask:
-    #         final = self.make_complete(mask=final, voxel_size=voxel_size)
-        
-    #     return final
-    
-        
     def crop_matrix(self, matrix, matrix_size, bias=np.zeros(3)):
         centroid = np.round(np.array(matrix.shape[-3:]) / 2 + bias)
         start = (centroid - np.array(matrix_size) / 2)
