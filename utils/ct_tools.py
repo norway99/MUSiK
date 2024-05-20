@@ -12,7 +12,7 @@ import functools
 import mcubes
 
 from sklearn.cluster import KMeans
-from skimage.morphology import erosion, dilation, opening, closing, white_tophat
+from skimage.morphology import rectangle,disk, erosion, dilation, opening, closing, white_tophat
 from skimage.morphology import black_tophat, skeletonize, convex_hull_image
 
 
