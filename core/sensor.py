@@ -105,13 +105,9 @@ class Sensor: # sensor points are represented in global coordinate space for thi
                 sensor_mask[:, :, sensor_mask.shape[2]//2] = 1
                 discretized_sensor_coords = None
             else:
-                l = self.sensor_coords.shape[0]//2
-                sensor_coords = self.sensor_coords[:l, :]
-                print(np.mean(sensor_coords, axis=0))
                 if transmit_transform is None:
                     raise Exception("Please supply a transmit transducer affine transformation")
-                transformed_sensor_coords = transmit_transform.apply_to_points(sensor_coords, inverse=True)
-                print(np.mean(transformed_sensor_coords, axis=0))
+                transformed_sensor_coords = transmit_transform.apply_to_points(self.sensor_coords, inverse=True)
                 transformed_sensor_coords = np.divide(transformed_sensor_coords, grid_voxel_size)
                 mask_centroid = np.array(sensor_mask.shape)/2
                 mask_centroid[0] = 0

@@ -43,14 +43,14 @@ test_phantom.set_default_tissue('fat')
 
 transducers = [transducer.Focused(max_frequency = 2e6,
                                   elements = 64, 
-                                  width = 10e-3,
-                                  height =  10e-3,
+                                  width = 10e-3 * (i+1),
+                                  height =  10e-3 * (i+1),
                                   sensor_sampling_scheme = 'not_centroid', 
                                   sweep = np.pi/2,
                                   ray_num = 32, 
                                   imaging_ndims = 2,
-                                  focus_azimuth = 50e-3 * (i + 1),
-                                  focus_elevation = 50e-3 * (i + 1),
+                                  focus_azimuth = 100e-3,
+                                  focus_elevation = 100e-3,
 ) for i in range(3)]
 
 for t in transducers:
@@ -76,7 +76,7 @@ simprops = simulation.SimProperties(
 
 
 test_experiment = experiment.Experiment(
-                 simulation_path = '../experiment_files/cardiac_ap4ch_00',
+                 simulation_path = '../experiment_files/cardiac_ap4ch_01',
                  sim_properties  = simprops,
                  phantom         = test_phantom,
                  transducer_set  = test_transducer_set,
@@ -89,7 +89,7 @@ test_experiment = experiment.Experiment(
                  )
 
 test_experiment.save()
-test_experiment = experiment.Experiment.load('../experiment_files/cardiac_ap4ch_00')
+test_experiment = experiment.Experiment.load('../experiment_files/cardiac_ap4ch_01')
 
 test_experiment.run(repeat=False)
 

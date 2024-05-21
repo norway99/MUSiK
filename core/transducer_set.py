@@ -182,7 +182,7 @@ class TransducerSet:
         return self.poses
 
 
-    def plot_transducer_coords(self, ax=None, save=False, save_path=None, scale=0.1):
+    def plot_transducer_coords(self, ax=None, save=False, save_path=None, scale=0.1, view=None):
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
@@ -191,6 +191,8 @@ class TransducerSet:
             ax.set_zlim(-scale, scale)
             ax.set_aspect('equal')
             ax.grid(False)
+        if view is not None:
+            ax.view_init(view[0], view[1])
         cmap = plt.get_cmap('tab20b')
         for i in range(len(self.transducers)):
             self.transducers[i].plot_sensor_coords(ax=ax, transform=self.poses[i], color=cmap(i/len(self.transducers)))
@@ -215,7 +217,7 @@ class TransducerSet:
         fig.update_layout(scene_aspectmode='data')
         fig.show()
                 
-    def plot_transducer_fovs(self, ax=None, save=False, save_path=None, scale=0.1):
+    def plot_transducer_fovs(self, ax=None, save=False, save_path=None, scale=0.1, view=None):
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
@@ -224,6 +226,8 @@ class TransducerSet:
             ax.set_zlim(-scale, scale)
             ax.set_aspect('equal')
             ax.grid(False)
+        if view is not None:
+            ax.view_init(view[0], view[1])
         cmap = plt.get_cmap('tab20b')
         for i in range(len(self.transducers)):
             self.transducers[i].plot_fov(ax=ax, transform=self.poses[i], length=0.02, color=cmap(i/len(self.transducers)))
