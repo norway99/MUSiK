@@ -45,12 +45,9 @@ class Sensor: # sensor points are represented in global coordinate space for thi
                 all_sensor_coords.append(global_sensor_coords)
                 sensors_per_el.append(np.ones(t.get_num_elements())*t_sensors_per_el)
                 element_shift = t_element_lookup[-1] + 1
-            self.element_lookup = np.stack(all_element_lookup, axis=0).flatten()
-            self.sensor_coords = np.stack(all_sensor_coords, axis=1).reshape(-1,3)
-            l = self.sensor_coords.shape[0]//2
-            print(np.mean(self.sensor_coords[:l, :],axis=0))
-            print(np.mean(self.sensor_coords[l:, :],axis=0))
-            self.sensors_per_el = np.stack(sensors_per_el, axis=0).flatten()
+            self.element_lookup = np.concatenate(all_element_lookup, axis=0)
+            self.sensor_coords = np.concatenate(all_sensor_coords, axis=0)
+            self.sensors_per_el = np.concatenate(sensors_per_el, axis=0)
             
 
     @classmethod
