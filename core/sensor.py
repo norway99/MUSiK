@@ -35,6 +35,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             for key in range(len(transducer_set)):
                 t = transducer_set.transducers[key]
                 p = transducer_set.poses[key]
+                assert p is not None, f"Pose for transducer {key} has not been assigned."
                 sensor_coords = t.get_sensor_coords()
                 t_element_lookup = np.arange(sensor_coords.shape[0], dtype=np.int64)
                 t_sensors_per_el = t.get_sensors_per_el()

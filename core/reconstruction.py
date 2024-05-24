@@ -230,11 +230,11 @@ class DAS(Reconstruction):
         assert (downsample > 0 and downsample <= 1), print("Downsample must be a float on (0,1]")
         
         times, coords, processed = self.preprocess_data(global_transforms=False, workers=workers, attenuation_factor=tgc)
-        coords = np.stack(coords, axis=0)
-        processed = np.stack(processed, axis=0)
+        # coords = np.stack(coords, axis=0)
+        # processed = np.stack(processed, axis=0)
 
         if bounds is None:
-            flat_coords = coords.reshape(-1,3)
+            flat_coords = np.concatenate(coords, axis=0).reshape(-1,3)
             bounds = np.array([(np.min(flat_coords[:,0]),np.max(flat_coords[:,0])),
                             (np.min(flat_coords[:,1]),np.max(flat_coords[:,1])),
                             (np.min(flat_coords[:,2]),np.max(flat_coords[:,2]))])
@@ -259,9 +259,14 @@ class DAS(Reconstruction):
 
         signals = []
         count = 0
-        for transducer in tqdm.tqdm(self.transducer_set.transducers):
-            subset_coords = coords[count:(count+transducer.get_num_rays()),:].reshape(-1,3)
-            subset_processed = processed[count:(count+transducer.get_num_rays())].reshape(-1)
+        # print(len(coords))
+        # print(coords[0].shape)
+        for i, transducer in tqdm.tqdm(enumerate(self.transducer_set.transducers)):
+            print(np.stack(coords[count:int(count+transducer.get_num_rays())], axis=0).shape)
+            subset_coords = np.stack(coords[count:int(count+transducer.get_num_rays())], axis=0).reshape(-1,3)
+            subset_processed = np.stack(processed[count:int(count+transducer.get_num_rays())], axis=0).reshape(-1)
+            # subset_coords = coords[i]
+            # subset_processed = processed[i]
             
             if downsample != 1:
                 subset_coords = subset_coords[::int(1/downsample)]

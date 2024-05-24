@@ -41,16 +41,17 @@ test_phantom.set_default_tissue('fat')
 
 
 
-transducers = [transducer.Focused(max_frequency = 2e6,
+transducers = [transducer.Focused(max_frequency = 1e6 * (i+1),
                                   elements = 64, 
-                                  width = 10e-3 * (i+1),
-                                  height =  10e-3 * (i+1),
+                                  width = 20e-3,
+                                  height =  20e-3,
                                   sensor_sampling_scheme = 'not_centroid', 
-                                  sweep = np.pi/2,
-                                  ray_num = 32, 
+                                  sweep = np.pi/3,
+                                  ray_num = 16,
                                   imaging_ndims = 2,
                                   focus_azimuth = 100e-3,
                                   focus_elevation = 100e-3,
+                                  cycles = 3,
 ) for i in range(3)]
 
 for t in transducers:
@@ -60,6 +61,7 @@ test_transducer_set = transducer_set.TransducerSet(transducers, seed=8888)
 test_transducer_set.assign_pose(0, geometry.Transform([-np.pi*0.28,-np.pi*0.18,-np.pi*0.05], [-.052,0.055,-0.072]))
 test_transducer_set.assign_pose(1, geometry.Transform([-np.pi*0.28,-np.pi*0.18,-np.pi*0.05], [-.052,0.055,-0.072]))
 test_transducer_set.assign_pose(2, geometry.Transform([-np.pi*0.28,-np.pi*0.18,-np.pi*0.05], [-.052,0.055,-0.072]))
+# test_transducer_set.assign_pose(3, geometry.Transform([-np.pi*0.28,-np.pi*0.18,-np.pi*0.05], [-.052,0.055,-0.072]))
 
 test_sensor = sensor.Sensor(transducer_set=test_transducer_set, aperture_type='transmit_as_receive')
 
@@ -76,7 +78,7 @@ simprops = simulation.SimProperties(
 
 
 test_experiment = experiment.Experiment(
-                 simulation_path = '../experiment_files/cardiac_ap4ch_01',
+                 simulation_path = '../experiment_files/cardiac_ap4ch_frequency',
                  sim_properties  = simprops,
                  phantom         = test_phantom,
                  transducer_set  = test_transducer_set,
@@ -89,7 +91,7 @@ test_experiment = experiment.Experiment(
                  )
 
 test_experiment.save()
-test_experiment = experiment.Experiment.load('../experiment_files/cardiac_ap4ch_01')
+test_experiment = experiment.Experiment.load('../experiment_files/cardiac_ap4ch_frequency')
 
 test_experiment.run(repeat=False)
 
