@@ -2,10 +2,12 @@ import numpy as np
 import scipy
 import scipy.ndimage
 import os
+from os import listdir
 
 import sys
 sys.path.append('../utils')
 import utils
+import phantom_builder
 import geometry
 from tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
@@ -184,8 +186,21 @@ class Phantom:
         assert value in [t.label for t in self.tissues.values()], "value must be a valid tissue label"
         if isinstance(key, slice) or isinstance(key, int) or isinstance(key, tuple):
             self.mask[key] = value
-        
-        
+
+    def build_organ_from_mesh(self, surface_mesh, voxel_size, tissue_list, dir_path = None, file_list = None):
+        if dir_path is not None:
+            files = [f for f in listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))] 
+            files = [f for f in file_list if os.path.splitext(f)[-1].lower() == ".obj"]
+            files.sort()
+            file_list = [os.path.join(dir_path, f) for f in files]
+        else:
+            if file_list is None:
+                raise Exception("Please supply either a directory or a list of file paths")
+        min_bound = surface_mesh.get_min_bound()
+        max_bound = surface_mesh.get_max_bound()
+        for tissue, file in zip(tissue_list, file_list):
+            self.add_tissue(tissue, mask=phantom_builder.voxelize(file, voxel_size, min_bound, max_bound, self.matrix_dims))
+       
     # add tissue
     def add_tissue(self, tissue, mask=None):
         self.from_mask = True
@@ -193,7 +208,6 @@ class Phantom:
         if mask is not None:
             self.mask = np.where(mask, tissue.label, self.mask)
             self.complete = None
-        
         
     def remove_tissue(self, name):
         if name in self.tissues.keys():

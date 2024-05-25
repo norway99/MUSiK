@@ -12,11 +12,11 @@
 *.json
 *.csv
 *.obj
+*.mtl
+*.blend
 *.zip
 W00*
 simulation_files
-series_*
-baby.py
 *.DS_Store
 *.mrc
 outputs
@@ -28,6 +28,5 @@ __pycache__
 *.npy
 *.npz
 *simulations
-*.obj
 *.dcm
 *.vox
