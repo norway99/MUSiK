@@ -119,7 +119,7 @@ class TransducerSet:
     def place_transducer_by_voxel(self, transducer_index, surface_mesh, theta, voxel, voxel_size):
         min_coord = surface_mesh.get_min_bound()
         coord = np.multiply(voxel,voxel_size) + min_coord
-        self.place_transducer(transducer_index, surface_index, theta, point = coord)
+        self.place_transducer(transducer_index, surface_mesh, theta, point = coord)
     
     def place_transducer(self, transducer_index, surface_mesh, theta, vertex_id = None, triangle_id = None, point = None):
         if surface_mesh is None:

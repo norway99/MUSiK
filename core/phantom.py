@@ -190,7 +190,7 @@ class Phantom:
     def build_organ_from_mesh(self, surface_mesh, voxel_size, tissue_list, dir_path = None, file_list = None):
         if dir_path is not None:
             files = [f for f in listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))] 
-            files = [f for f in file_list if os.path.splitext(f)[-1].lower() == ".obj"]
+            files = [f for f in files if os.path.splitext(f)[-1].lower() == ".obj"]
             files.sort()
             file_list = [os.path.join(dir_path, f) for f in files]
         else:
@@ -198,8 +198,9 @@ class Phantom:
                 raise Exception("Please supply either a directory or a list of file paths")
         min_bound = surface_mesh.get_min_bound()
         max_bound = surface_mesh.get_max_bound()
+        # print(min_bound, max_bound)
         for tissue, file in zip(tissue_list, file_list):
-            self.add_tissue(tissue, mask=phantom_builder.voxelize(file, voxel_size, min_bound, max_bound, self.matrix_dims))
+            self.add_tissue(tissue, mask=phantom_builder.voxelize(voxel_size, mesh_file=file, min_bounds=min_bound, max_bounds=max_bound, grid_shape=self.matrix_dims))
        
     # add tissue
     def add_tissue(self, tissue, mask=None):

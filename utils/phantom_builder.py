@@ -124,8 +124,14 @@ def make_surface_mesh(fg_mask, voxel_size, save_path):
     mcubes.export_obj(vertices, triangles, save_path) # this works well 
     return vertices, triangles
 
-def voxelize(mesh_file, voxel_size, min_bounds = None, max_bounds = None, grid_shape = None, make_convex=False):
-    legacy_mesh = io.read_triangle_mesh(mesh_file)
+def voxelize(voxel_size, mesh=None, mesh_file=None, min_bounds=None, max_bounds=None, grid_shape=None, make_convex=False):
+    if mesh is None and mesh_file is None:
+        print('need to supply either mesh or mesh_file')
+        return 0
+    elif mesh is not None:
+        legacy_mesh = mesh
+    else:
+        legacy_mesh = io.read_triangle_mesh(mesh_file)
     if make_convex is True:
         ans = legacy_mesh.compute_convex_hull()
         legacy_mesh = ans[0]
@@ -135,22 +141,19 @@ def voxelize(mesh_file, voxel_size, min_bounds = None, max_bounds = None, grid_s
         voxel_mask = np.zeros(np.max(voxel_indices, axis=0) + 1)
         for index in voxel_indices:
             voxel_mask[index[0], index[1], index[2]] = 1
-        occupancy = np.transpose(voxel_mask, (2, 0, 1))
+        occupancy = voxel_mask
     else:
         mesh = o3d.t.geometry.TriangleMesh.from_legacy(legacy_mesh)
         scene = o3d.t.geometry.RaycastingScene()
         _ = scene.add_triangles(mesh)
-        mask = np.zeros(grid_shape)
         xs = np.linspace(min_bounds[0], max_bounds[0], grid_shape[0]+1) + voxel_size/2
         xs = xs[:-1] 
         ys = np.linspace(min_bounds[1], max_bounds[1], grid_shape[1]+1) + voxel_size/2
         ys = ys[:-1]    
         zs = np.linspace(min_bounds[2], max_bounds[2], grid_shape[2]+1) + voxel_size/2
         zs = zs[:-1]
-        query_points = np.stack(np.meshgrid(xs, ys, zs), axis=-1).astype(np.float32)
+        query_points = np.stack(np.meshgrid(xs, ys, zs, indexing='ij'), axis=-1).astype(np.float32)
         occupancy = scene.compute_occupancy(query_points).numpy()
-        occupancy = np.transpose(occupancy, (2, 1, 0))
-    occupancy = np.flip(occupancy, axis=0)
     return occupancy
         
 
