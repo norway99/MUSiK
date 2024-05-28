@@ -124,7 +124,7 @@ def make_surface_mesh(fg_mask, voxel_size, save_path):
     mcubes.export_obj(vertices, triangles, save_path) # this works well 
     return vertices, triangles
 
-def voxelize(voxel_size, mesh=None, mesh_file=None, min_bounds=None, max_bounds=None, grid_shape=None, make_convex=False):
+def voxelize(voxel_size, mesh=None, mesh_file=None, min_bounds=None, max_bounds=None, grid_shape=None):
     if mesh is None and mesh_file is None:
         print('need to supply either mesh or mesh_file')
         return 0
@@ -132,9 +132,9 @@ def voxelize(voxel_size, mesh=None, mesh_file=None, min_bounds=None, max_bounds=
         legacy_mesh = mesh
     else:
         legacy_mesh = io.read_triangle_mesh(mesh_file)
-    if make_convex is True:
-        ans = legacy_mesh.compute_convex_hull()
-        legacy_mesh = ans[0]
+    # if make_convex is True:
+    #     ans = legacy_mesh.compute_convex_hull()
+    #     legacy_mesh = ans[0]
     if min_bounds is None or max_bounds is None or grid_shape is None:
         voxels = o3d.geometry.VoxelGrid.create_from_triangle_mesh(legacy_mesh, voxel_size).get_voxels()
         voxel_indices = np.stack(list(vx.grid_index for vx in voxels))

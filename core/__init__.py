@@ -9,5 +9,6 @@ module_files = [file[:-3] for file in os.listdir(current_dir) if file.endswith('
 
 # Import all modules dynamically and add them to the package namespace
 for module_name in module_files:
+    #if module_name == "phantom": # for debugging on Mac to avoid k-wave imports
     module = importlib.import_module('.' + module_name, package=__name__)
-    globals()[module_name] = module
+    globals()[module_name] = module 
