@@ -7,7 +7,7 @@ from os import listdir
 import sys
 sys.path.append('../utils')
 import utils
-import phantom_builder
+# import phantom_builder
 import geometry
 from tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
@@ -188,6 +188,8 @@ class Phantom:
             self.mask[key] = value
 
     def build_organ_from_mesh(self, surface_mesh, voxel_size, tissue_list, dir_path = None, file_list = None):
+        import phantom_builder
+        
         if dir_path is not None:
             files = [f for f in listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))] 
             files = [f for f in files if os.path.splitext(f)[-1].lower() == ".obj"]
