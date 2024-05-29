@@ -3,6 +3,7 @@ import numpy as np
 import os
 import mrcfile
 from scipy.ndimage import binary_fill_holes
+from scipy.spatial import ConvexHull, Delaunay
 
 
 # for serializing numpy arrays to json
@@ -78,3 +79,12 @@ def fill_3d_holes(binary_mask):
     filled_region = binary_fill_holes(binary_mask)
     binary_mask[filled_region > 0] = 1
     return binary_mask
+
+def compute_convex_hull_mask(points, meshgrid_obj):    
+    hull = ConvexHull(points)
+    deln = Delaunay(points[hull.vertices]) 
+    out_idx = np.nonzero(deln.find_simplex(meshgrid_obj) + 1)
+    out_img = np.empty(meshgrid_obj.shape[:-1])
+    out_img[:] = np.nan
+    out_img[out_idx] = 1
+    return out_img

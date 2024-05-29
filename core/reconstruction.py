@@ -7,6 +7,7 @@ import tqdm
 import sys
 import multiprocessing
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+from scipy.ndimage import gaussian_filter1d
 sys.path.append('../utils')
 import time
 
@@ -120,7 +121,6 @@ class DAS(Reconstruction):
         sensor_receive = [self.sensor.aperture_type == "transmit_as_receive" for i in range(len(self.results))]
         attenuation_factor = [attenuation_factor for i in range(len(self.results))]
         inputs = list(zip(indices, transducers, transforms, sensor_receive, attenuation_factor))
-        starttime = time.time()
         
         
         if workers > 1:
@@ -169,16 +169,14 @@ class DAS(Reconstruction):
         ax.set_aspect('equal')
         
 
-    def get_image(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8, attenuation_factor=1):
+    def get_image(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8, tgc=1):
         assert dimensions in [2,3], print("Image can be 2 or 3 dimensional")
         assert (downsample > 0 and downsample <= 1), print("Downsample must be a float on (0,1]")
         
-        times, coords, processed = self.preprocess_data(workers=workers, attenuation_factor=attenuation_factor)
-        coords = np.stack(coords, axis=0)
-        processed = np.stack(processed, axis=0)
+        times, coords, processed = self.preprocess_data(global_transforms=True, workers=workers, attenuation_factor=tgc)
 
         if bounds is None:
-            flat_coords = coords.reshape(-1,3)
+            flat_coords = np.concatenate(coords, axis=0).reshape(-1,3)
             bounds = np.array([(np.min(flat_coords[:,0]),np.max(flat_coords[:,0])),
                             (np.min(flat_coords[:,1]),np.max(flat_coords[:,1])),
                             (np.min(flat_coords[:,2]),np.max(flat_coords[:,2]))])
@@ -190,31 +188,41 @@ class DAS(Reconstruction):
             print("provide bounds as a list, tuple, numpy array, or float")
             return 0
 
-        X = np.linspace(bounds[0,0], bounds[0,1], matsize)
-        Y = np.linspace(bounds[1,0], bounds[1,1], matsize)
-        Z = np.linspace(bounds[2,0], bounds[2,1], matsize)
+        bounds_avg = (bounds[0,1] - bounds[0,0] + bounds[1,1] - bounds[1,0] + bounds[2,1] - bounds[2,0])/3
+        X = np.linspace(bounds[0,0], bounds[0,1], int((bounds[0,1]-bounds[0,0]) / bounds_avg * matsize))
+        Y = np.linspace(bounds[1,0], bounds[1,1], int((bounds[1,1]-bounds[1,0]) / bounds_avg * matsize))
+        Z = np.linspace(bounds[2,0], bounds[2,1], int((bounds[2,1]-bounds[2,0]) / bounds_avg * matsize))
         
         if dimensions == 2:
-            X, Y = np.meshgrid(X, Y, indexing='ij') # worked before changing indexing to ij so maybe take this out if it doesn't work anymore :/
+            X, Y = np.meshgrid(X, Y, indexing='ij')
         else:
             X, Y, Z = np.meshgrid(X, Y, Z, indexing='ij')
 
         signals = []
         count = 0
-        for transducer in tqdm.tqdm(self.transducer_set.transducers):
-            subset_coords = coords[count:(count+transducer.get_num_rays()),:].reshape(-1,3)
-            subset_processed = processed[count:(count+transducer.get_num_rays())].reshape(-1)
+        
+        for i, transducer in tqdm.tqdm(enumerate(self.transducer_set.transducers)):
+            subset_coords = np.stack(coords[count:int(count+transducer.get_num_rays())], axis=0).reshape(-1,3)
+            subset_processed = np.stack(processed[count:int(count+transducer.get_num_rays())], axis=0).reshape(-1)
             
             if downsample != 1:
+                subset_processed = gaussian_filter1d(subset_processed.reshape(-1,transducer.get_num_rays()), int(1/downsample), axis=-1).reshape(-1)
                 subset_coords = subset_coords[::int(1/downsample)]
                 subset_processed = subset_processed[::int(1/downsample)]
-                            
+            
             if dimensions == 2:
                 interp = LinearNDInterpolator(subset_coords[:,:2], subset_processed)
                 signals.append(interp(X, Y))
             else:
                 interp = NearestNDInterpolator(subset_coords, subset_processed)
-                signals.append(interp(X, Y, Z))
+                signal = interp(X, Y, Z)
+                
+                ray_length = subset_coords.shape[0] / transducer.get_num_rays()
+                convex_coords = np.stack([subset_coords[0]] + [subset_coords[int(i*ray_length-1)] for i in range(1, transducer.get_num_rays())] + [subset_coords[-1]])
+                convex_hull_mask = utils.compute_convex_hull_mask(convex_coords, np.stack([X,Y,Z], axis=-1))
+                
+                signals.append(signal * convex_hull_mask)
+                
             count += transducer.get_num_rays()
         
         combined_signals = np.stack(signals, axis=0)
@@ -222,7 +230,7 @@ class DAS(Reconstruction):
         image = np.ma.average(masked_signals, axis=0)
         image = image.filled(np.nan)
         
-        return image, signals
+        return image
     
     
     def get_signals(self, bounds=None, matsize=256, dimensions=3, downsample = 1, workers=8, tgc=1):
@@ -230,8 +238,6 @@ class DAS(Reconstruction):
         assert (downsample > 0 and downsample <= 1), print("Downsample must be a float on (0,1]")
         
         times, coords, processed = self.preprocess_data(global_transforms=False, workers=workers, attenuation_factor=tgc)
-        # coords = np.stack(coords, axis=0)
-        # processed = np.stack(processed, axis=0)
 
         if bounds is None:
             flat_coords = np.concatenate(coords, axis=0).reshape(-1,3)
@@ -253,22 +259,18 @@ class DAS(Reconstruction):
         Z = np.linspace(bounds[2,0], bounds[2,1], int((bounds[2,1]-bounds[2,0]) / bounds_avg * matsize))
         
         if dimensions == 2:
-            X, Y = np.meshgrid(X, Y, indexing='ij') # worked before changing indexing to ij so maybe take this out if it doesn't work anymore :/
+            X, Y = np.meshgrid(X, Y, indexing='ij')
         else:
             X, Y, Z = np.meshgrid(X, Y, Z, indexing='ij')
 
         signals = []
         count = 0
-        # print(len(coords))
-        # print(coords[0].shape)
         for i, transducer in tqdm.tqdm(enumerate(self.transducer_set.transducers)):
-            print(np.stack(coords[count:int(count+transducer.get_num_rays())], axis=0).shape)
             subset_coords = np.stack(coords[count:int(count+transducer.get_num_rays())], axis=0).reshape(-1,3)
             subset_processed = np.stack(processed[count:int(count+transducer.get_num_rays())], axis=0).reshape(-1)
-            # subset_coords = coords[i]
-            # subset_processed = processed[i]
             
             if downsample != 1:
+                subset_processed = gaussian_filter1d(subset_processed.reshape(-1,transducer.get_num_rays()), int(1/downsample), axis=-1).reshape(-1)
                 subset_coords = subset_coords[::int(1/downsample)]
                 subset_processed = subset_processed[::int(1/downsample)]
                             
@@ -277,7 +279,15 @@ class DAS(Reconstruction):
                 signals.append(interp(X, Y))
             else:
                 interp = NearestNDInterpolator(subset_coords, subset_processed)
-                signals.append(interp(X, Y, Z))
+                signal = interp(X, Y, Z)
+                # interp = LinearNDInterpolator(subset_coords, subset_processed)
+                
+                ray_length = subset_coords.shape[0] / transducer.get_num_rays()
+                convex_coords = np.stack([subset_coords[0]] + [subset_coords[int(i*ray_length-1)] for i in range(1, transducer.get_num_rays())] + [subset_coords[-1]])
+                convex_hull_mask = utils.compute_convex_hull_mask(convex_coords, np.stack([X,Y,Z], axis=-1))
+                
+                signals.append(signal * convex_hull_mask)
+                
             count += transducer.get_num_rays()
         
         return signals
