@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import sys
 sys.path.append('../utils')
-#import open3d as o3d
-#from open3d import io, visualization
+import open3d as o3d
+from open3d import io, visualization
 
 import geometry
 import utils
@@ -108,25 +108,25 @@ class TransducerSet:
         print('removing poses without removing transducers is not supported, either overwrite the pose (assign_pose) or remove the transducer (remove_transducer)')
         return 0  
 
-    def _snap_to_surface(point, surface):
+    def _snap_to_surface(self, point, surface):
          scene = o3d.t.geometry.RaycastingScene()
          _ = scene.add_triangles(surface)
          query_pt = o3d.core.Tensor([point], dtype=o3d.core.Dtype.Float32)
          closest_pt = scene.compute_closest_points(query_pt)
          closest_triangle = closest_pt['primitive_ids'][0].item()
-         return closest_pt['points'].numpy(), closest_triangle
+         return closest_pt['points'][0].numpy(), closest_triangle
     
-    def place_transducer_by_voxel(self, transducer_index, surface_mesh, theta, voxel, voxel_size):
+    def place_transducer_by_voxel(self, transducer_index, surface_mesh, voxel, voxel_size):
         min_coord = surface_mesh.get_min_bound()
         coord = np.multiply(voxel,voxel_size) + min_coord
-        self.place_transducer(transducer_index, surface_mesh, theta, point = coord)
-    
-    def place_transducer(self, transducer_index, surface_mesh, theta, vertex_id = None, triangle_id = None, point = None):
+        return self.place_transducer(transducer_index, surface_mesh, point = coord)
+        
+    def place_transducer(self, transducer_index, surface_mesh, vertex_id = None, triangle_id = None, point = None):
         if surface_mesh is None:
             raise Exception("Must provide a surface on which to place the transducer")
         if vertex_id is None and triangle_id is None and point is None:
             raise Exception("Must provide a heuristic for transducer placement")
-        if not isinstance(surface_mesh, open3d.cpu.pybind.t.geometry.TriangleMesh):
+        if not isinstance(surface_mesh, o3d.cpu.pybind.t.geometry.TriangleMesh):
             surface_mesh = o3d.t.geometry.TriangleMesh.from_legacy(surface_mesh)
         surface_mesh.compute_vertex_normals()
         surface_mesh.compute_triangle_normals()
@@ -142,14 +142,14 @@ class TransducerSet:
                                                    surface_mesh.vertex.positions[triangle_vertices[1]].numpy(),
                                                    surface_mesh.vertex.positions[triangle_vertices[2]].numpy())
                 pt = np.mean(triangle_vertex_coords, axis=0)
-            else:
-                pt, id = self._snap_to_surface([point], surface_mesh)
-                normal = surface_mesh.triangle.normals[id]
-        min_coord = surface_mesh.get_min_bound()
-        max_coord = surface_mesh.get_max_bound()
+            else:                
+                pt, id = self._snap_to_surface(point, surface_mesh)
+                normal = surface_mesh.triangle.normals[id].numpy()
+        min_coord = surface_mesh.get_min_bound().numpy()
+        max_coord = surface_mesh.get_max_bound().numpy()
         mesh_origin = np.mean([min_coord, max_coord], axis=0)
-        pt = pt - mesh_origin        
-        self.assign_pose(index, geometry.Transform(-theta*normal, pt, rotvec = True))
+        pt = pt - mesh_origin     
+        return pt, normal
 
     def find_transducer(self, label):
         ctr = 0
@@ -190,7 +190,7 @@ class TransducerSet:
         return self.poses
 
 
-    def plot_transducer_coords(self, ax=None, save=False, save_path=None, scale=0.1, view=None):
+    def plot_transducer_coords(self, ax=None, save=False, save_path=None, scale=0.1, view=None, phantom_coords=None):
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
@@ -204,6 +204,8 @@ class TransducerSet:
         cmap = plt.get_cmap('tab20b')
         for i in range(len(self.transducers)):
             self.transducers[i].plot_sensor_coords(ax=ax, transform=self.poses[i], color=cmap(i/len(self.transducers)))
+        if phantom_coords is not None:
+            ax.scatter(phantom_coords[:,0], phantom_coords[:,1], phantom_coords[:,2], s=0.1, color='b')
         if ax is None:
             if save:
                 plt.savefig(save_path)
