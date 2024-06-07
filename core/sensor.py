@@ -5,6 +5,9 @@ sys.path.append('../')
 import utils
 import geometry
 
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+
 class Sensor: # sensor points are represented in global coordinate space for this class
 
     def __init__(self,
@@ -90,7 +93,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             sensor_coord_list.append(tuple(coord))
         return sensor_coord_list
     
-    def visualize(self, phantom, slice, body_surface_mask = None, slice):
+    def visualize(self, phantom, slice, body_surface_mask = None):
         global_mask = np.zeros(phantom.mask.shape)
         global_mask = np.where(np.ndarray.astype(phantom.mask, int) != phantom.default_tissue, 1, 0)
         sensor_voxels = np.divide(self.sensor_coords, phantom.voxel_dims)
@@ -101,10 +104,10 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         for voxel in sensor_voxels_disc:
             global_mask[voxel[0], voxel[1], voxel[2]] = 1
         
-        if body_mask is not None:
-            global_mask = global_mask + body_mask
+        if body_surface_mask is not None:
+            global_mask = global_mask + body_surface_mask
 
-        plt.imshow(gm[:, :, slice])
+        plt.imshow(global_mask[:, :, slice])
         plt.colorbar()
         plt.gray()
 
