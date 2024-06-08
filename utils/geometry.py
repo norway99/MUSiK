@@ -244,12 +244,14 @@ class Transform:
 
 
 
-def create_sphere(centroid, radius, matrix_dims):
+def create_sphere(centroid, radius, voxel_dims, matrix_dims):
     
     # convert centroid from global coordinates to matrix indices
-    centroid = (int(centroid[0] * matrix_dims[0] / 2 + matrix_dims[0] / 2), 
-                int(centroid[1] * matrix_dims[1] / 2 + matrix_dims[1] / 2), 
-                int(centroid[2] * matrix_dims[2] / 2 + matrix_dims[2] / 2))
+    centroid = (int(centroid[0] / voxel_dims[0] + matrix_dims[0] / 2), 
+                int(centroid[1] / voxel_dims[1] + matrix_dims[1] / 2), 
+                int(centroid[2] / voxel_dims[2] + matrix_dims[2] / 2))
+    
+    print(centroid)
     
     x, y, z = np.mgrid[0:matrix_dims[0]:1, 0:matrix_dims[1]:1, 0:matrix_dims[2]:1]
     r = np.sqrt((x - centroid[0])**2 + (y - centroid[1])**2 + (z - centroid[2])**2)

@@ -12,6 +12,7 @@ import geometry
 from tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
 
+# phantom bounds in global coords are NOT necessarily -1 to 1
 
 class Phantom:
     """
@@ -229,7 +230,7 @@ class Phantom:
         
         
     def add_tissue_sphere(self, centroid, radius, tissue):
-        region = geometry.create_sphere(centroid, radius, self.matrix_dims)
+        region = geometry.create_sphere(centroid, radius, self.voxel_dims, self.matrix_dims)
         if tissue.name not in self.tissues.keys():
             self.tissues[tissue.name] = tissue
         self.mask = np.where(region, tissue.label, self.mask)
