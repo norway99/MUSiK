@@ -431,7 +431,8 @@ class Phantom:
         
         global_indices = global_points / self.voxel_dims.T + self.matrix_dims.T / 2
         
-        y,x,z = np.arange(self.matrix_dims[0]), np.arange(self.matrix_dims[1]), np.arange(self.matrix_dims[2])
+        # y,x,z = np.arange(self.matrix_dims[0]), np.arange(self.matrix_dims[1]), np.arange(self.matrix_dims[2]) # I'm not sure why this was here but I'm pretty sure it was important - may add it back in later idk
+        x,y,z = np.arange(self.matrix_dims[0]), np.arange(self.matrix_dims[1]), np.arange(self.matrix_dims[2])
         xyz = np.stack(np.meshgrid(x,y,z, indexing='ij'), axis=-1).reshape(-1,3)
         
         if self.from_mask:
