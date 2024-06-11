@@ -276,7 +276,7 @@ class Simulation:
         medium.density = density_map
         
         sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(sim_transducer, not_transducer, self.sim_properties.voxel_size, affine)
-            
+
         return (medium, kgrid, not_transducer, sensor_mask, pml_size_points, discretized_sensor_coords, sim_transducer, sim_sensor)
         
         
