@@ -64,6 +64,7 @@ class Phantom:
         self.rng = np.random.default_rng(seed)
         self.voxel_dims = np.array(voxel_dims)
         self.mask = np.zeros(matrix_dims, dtype = np.float32)
+        # self.anisotropy = np.ones((3, matrix_dims[0], matrix_dims[1], matrix_dims[2]), dtype = np.float32)
         self.tissues = {'water':Tissue(name = 'water', label = 0, c=1500, rho=1000, sigma=0, scale=0.1)}
         self.matrix_dims = np.array(matrix_dims)
         self.baseline = baseline
