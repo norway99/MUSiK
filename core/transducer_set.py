@@ -116,12 +116,12 @@ class TransducerSet:
          closest_triangle = closest_pt['primitive_ids'][0].item()
          return closest_pt['points'][0].numpy(), closest_triangle
     
-    def place_transducer_by_voxel(self, transducer_index, surface_mesh, voxel, voxel_size):
+    def place_on_mesh_voxel(self, transducer_index, surface_mesh, voxel, voxel_size):
         min_coord = surface_mesh.get_min_bound()
         coord = np.multiply(voxel,voxel_size) + min_coord
         return self.place_transducer(transducer_index, surface_mesh, point = coord)
         
-    def place_transducer(self, transducer_index, surface_mesh, vertex_id = None, triangle_id = None, point = None):
+    def place_on_mesh(self, transducer_index, surface_mesh, vertex_id = None, triangle_id = None, point = None):
         if surface_mesh is None:
             raise Exception("Must provide a surface on which to place the transducer")
         if vertex_id is None and triangle_id is None and point is None:
