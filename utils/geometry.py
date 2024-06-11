@@ -11,18 +11,44 @@ class Transform:
     def __init__(self, 
                 rotation = (0,0,0),
                 translation = (0,0,0),
-                rot_vec = False,
+                from_matrix = False,
+                about_axis = False,
                 intrinsic = True, # define intrinsic or extrinsic while initializing from euler angles
                 ):
         
-        # initialize from rotation and translation
-        if rot_vec:
+        # initialize from rotation and translation   
+        if from_matrix:
+            if isinstance(rotation, np.ndarray):
+                self.rotation = scipy.spatial.transform.Rotation.from_matrix(rotation)
+            else:
+                raise Exception("Please supply the rotation in matrix format")
+        elif about_axis:
             self.rotation = scipy.spatial.transform.Rotation.from_rotvec(rotation)
         elif intrinsic:                
             self.rotation = scipy.spatial.transform.Rotation.from_euler("ZYX", rotation, degrees=False)  # intrinsic
         else:
             self.rotation = scipy.spatial.transform.Rotation.from_euler("zyx", rotation, degrees=False)  # extrinsic
         self.translation = np.array(translation)
+
+    @classmethod
+    def make_from_heading_vector(cls, heading_vector, trans):
+ 
+        e = np.array([1, 0, 0])
+        rej = (heading_vector - np.dot(e, heading_vector) * e)/np.linalg.norm(heading_vector - np.dot(e, heading_vector) * e)
+        cross = np.cross(heading_vector, e)
+
+        f_inv = np.column_stack((e, rej, cross))
+
+        f = np.linalg.inv(f_inv)
+
+        g = np.array([[np.dot(e, heading_vector), -1*np.linalg.norm(np.cross(e, heading_vector)), 0], 
+                      [np.linalg.norm(np.cross(e, heading_vector)), np.dot(e, heading_vector), 0], 
+                      [0, 0, 1]])
+
+        rot_matrix = np.matmul(f_inv, np.matmul(g, f))
+
+        return cls(rotation=rot_matrix, translation=trans, from_matrix=True)
+    
     
     # return homogeneous transformation matrix
     def __get_matrix(self, inverse=False, scale=1,):

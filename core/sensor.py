@@ -97,12 +97,12 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         global_mask = np.zeros(phantom.mask.shape)
         global_mask = np.where(np.ndarray.astype(phantom.mask, int) != phantom.default_tissue, 1, 0)
         sensor_voxels = np.divide(self.sensor_coords, phantom.voxel_dims)
-        phantom_centroid = np.array(phantom.mask.shape)/2 
+        phantom_centroid = np.array(phantom.mask.shape)//2 
         recenter_matrix = np.broadcast_to(phantom_centroid, sensor_voxels.shape)
         sensor_voxels = sensor_voxels + recenter_matrix
         sensor_voxels_disc = np.ndarray.astype(np.round(sensor_voxels), int)
         for voxel in sensor_voxels_disc:
-            global_mask[voxel[0], voxel[1], voxel[2]] = 1
+            global_mask[voxel[0], voxel[1], voxel[2]] = 2
         
         if body_surface_mask is not None:
             global_mask = global_mask + body_surface_mask
