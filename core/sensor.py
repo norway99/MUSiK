@@ -92,8 +92,8 @@ class Sensor: # sensor points are represented in global coordinate space for thi
             sensor_coord_list.append(tuple(coord))
         return sensor_coord_list
     
-    def visualize(self, phantom, slice, body_surface_mask = None):
-        global_mask = phantom.mask
+    def visualize(self, phantom, index=[slice(0, -1, 1), slice(0, -1, 1), 0], body_surface_mask = None):
+        global_mask = phantom.mask.copy()
         sensor_voxels = np.divide(self.sensor_coords, phantom.voxel_dims)
         phantom_centroid = np.array(phantom.mask.shape)//2 
         recenter_matrix = np.broadcast_to(phantom_centroid, sensor_voxels.shape)
@@ -108,8 +108,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         
         if body_surface_mask is not None:
             global_mask = global_mask + body_surface_mask * (np.amax(phantom.mask) + 2)
-
-        plt.imshow(global_mask[:, :, slice])
+        plt.imshow(global_mask[index])
         plt.colorbar()
         plt.gray()
 

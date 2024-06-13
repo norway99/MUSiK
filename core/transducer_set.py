@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import sys
 sys.path.append('../utils')
-import open3d as o3d
-from open3d import io, visualization
 
 import geometry
 import utils
@@ -108,20 +106,26 @@ class TransducerSet:
         print('removing poses without removing transducers is not supported, either overwrite the pose (assign_pose) or remove the transducer (remove_transducer)')
         return 0  
 
-    def _snap_to_surface(self, point, surface):
-         scene = o3d.t.geometry.RaycastingScene()
-         _ = scene.add_triangles(surface)
-         query_pt = o3d.core.Tensor([point], dtype=o3d.core.Dtype.Float32)
-         closest_pt = scene.compute_closest_points(query_pt)
-         closest_triangle = closest_pt['primitive_ids'][0].item()
-         return closest_pt['points'][0].numpy(), closest_triangle
+    def _snap_to_surface(self, point, surface):   
+        import open3d as o3d
+             
+        scene = o3d.t.geometry.RaycastingScene()
+        _ = scene.add_triangles(surface)
+        query_pt = o3d.core.Tensor([point], dtype=o3d.core.Dtype.Float32)
+        closest_pt = scene.compute_closest_points(query_pt)
+        closest_triangle = closest_pt['primitive_ids'][0].item()
+        return closest_pt['points'][0].numpy(), closest_triangle
     
     def place_on_mesh_voxel(self, transducer_index, surface_mesh, voxel, voxel_size):
+        import open3d as o3d
+        
         min_coord = surface_mesh.get_min_bound()
         coord = np.multiply(voxel,voxel_size) + min_coord
         return self.place_on_mesh(transducer_index, surface_mesh, point = coord)
         
     def place_on_mesh(self, transducer_index, surface_mesh, vertex_id = None, triangle_id = None, point = None):
+        import open3d as o3d
+        
         if surface_mesh is None:
             raise Exception("Must provide a surface on which to place the transducer")
         if vertex_id is None and triangle_id is None and point is None:
