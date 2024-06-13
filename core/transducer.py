@@ -604,9 +604,9 @@ class Planewave(Transducer):
     
     def preprocess(self, scan_lines, t_array, sim_properties, window_factor=8,) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
-        # scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties)
-        # if self.compression_fac is not None:
-        #     scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
+        scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties)
+        if self.compression_fac is not None:
+            scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
         return scan_lines
                                        
 

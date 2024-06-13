@@ -415,25 +415,31 @@ class Compounding(Reconstruction):
         
         steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
-        dt = (self.results[index][0][-1] - self.results[index][0][0]) / self.results[index][0].shape[0]
+        dt = (self.results[index][0][-1] - self.results[index][0][0]) / (self.results[index][0].shape[0]-1)
         preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
         
-        t_start = int(np.ceil(transducer.width / 2 *  np.abs(np.sin(steering_angle)) / c0 / dt + len(transducer.get_pulse())/2))
+        # ---------------------------------------------------------------check this
+        t_start = int(np.ceil(transducer.width / 2 * np.abs(np.sin(steering_angle)) / c0 / dt + len(transducer.get_pulse())/2)) 
+        print(f't_start: {t_start}')
         
         if len(preprocessed_data.shape) == 2:
             preprocessed_data = preprocessed_data[:, t_start:]
+            # preprocessed_data[:, :t_start] = 0
             preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
         else:
             preprocessed_data = preprocessed_data[:, :, t_start:]
+            # preprocessed_data[:, :, :t_start] = 0
                             
         transmit_position = transducer_transform.translation
-                    
+        print(f'transmit_position: {transmit_position}')
+        
         if isinstance(transducer, Planewave):
             transmit_rotation = transducer_transform.get()[:3, :3] # maybe inverse?
             print(f'transmit_rotation: {transmit_rotation}')
             pw_rotation = np.array([[np.cos(steering_angle), -np.sin(steering_angle), 0], [np.sin(steering_angle), np.cos(steering_angle), 0], [0, 0, 1]]) # I'm sure there's a possible maybe here?
             print(f'pw_rotation: {pw_rotation}')
-            rotation = np.matmul(pw_rotation, transmit_rotation) # maybe switch direction?
+            # rotation = np.matmul(pw_rotation, transmit_rotation) # maybe switch direction?
+            rotation = np.matmul(transmit_rotation, pw_rotation)
             print(f'rotation: {rotation}')
             normal = np.matmul(rotation, np.array([1, 0, 0])) 
             print(f'normal: {normal}')
@@ -444,15 +450,17 @@ class Compounding(Reconstruction):
             
         xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2], indexing='ij')
         distances = np.stack([xxx, yyy, zzz], axis=0)
+        print(f'distances: {distances.shape}')
         
         transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
+        print(f'transmit_dists: {transmit_dists.shape}')
         
         image_matrix = np.zeros((len(x), len(y), len(z)))
         
-        for centroid, rf_series in zip(element_centroids, preprocessed_data):
+        for centroid, rf_series in zip(element_centroids, preprocessed_data): # don't need to include zzz in this calculation
             xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2], indexing='ij')
             element_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
-            travel_times = ((transmit_dists + element_dists)/c0/dt).astype(np.int32)
+            travel_times = np.round((transmit_dists + element_dists)/c0/dt).astype(np.int32)
             
             image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]
         return image_matrix

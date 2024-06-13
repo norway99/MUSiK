@@ -85,7 +85,6 @@ class Sensor: # sensor points are represented in global coordinate space for thi
     def to_list(self, my_list = None):
         if my_list is None:
             if self.sensor_coords is None:
-                # print('sensor_coords is None if using transducer as sole receiver')
                 return None
             my_list = self.sensor_coords
         sensor_coord_list = []
@@ -94,8 +93,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         return sensor_coord_list
     
     def visualize(self, phantom, slice, body_surface_mask = None):
-        global_mask = np.zeros(phantom.mask.shape)
-        global_mask = np.where(np.ndarray.astype(phantom.mask, int) != phantom.default_tissue, 1, 0)
+        global_mask = phantom.mask
         sensor_voxels = np.divide(self.sensor_coords, phantom.voxel_dims)
         phantom_centroid = np.array(phantom.mask.shape)//2 
         recenter_matrix = np.broadcast_to(phantom_centroid, sensor_voxels.shape)
@@ -106,16 +104,14 @@ class Sensor: # sensor points are represented in global coordinate space for thi
                 continue
             if np.prod(np.where(voxel < global_mask.shape, 1, 0)) == 0:
                 continue
-            global_mask[voxel[0], voxel[1], voxel[2]] = 1
+            global_mask[voxel[0], voxel[1], voxel[2]] = np.amax(phantom.mask) + 1
         
         if body_surface_mask is not None:
-            global_mask = global_mask + body_surface_mask
+            global_mask = global_mask + body_surface_mask * (np.amax(phantom.mask) + 2)
 
         plt.imshow(global_mask[:, :, slice])
         plt.colorbar()
         plt.gray()
-
-        return global_mask
 
     
     # takes in a list of sensor coords (global coordinate system), transforms to match reference of transmit transducer, and discretizes
@@ -139,14 +135,12 @@ class Sensor: # sensor points are represented in global coordinate space for thi
                 recenter_matrix = np.broadcast_to(mask_centroid, transformed_sensor_coords.shape)
                 transformed_sensor_coords = transformed_sensor_coords + recenter_matrix
                 discretized_sensor_coords = np.ndarray.astype(np.round(transformed_sensor_coords), int)
-                print(discretized_sensor_coords.shape)
                 for coord in discretized_sensor_coords:
                     if np.prod(np.where(coord >= 0, 1, 0)) == 0: 
                         continue
                     if np.prod(np.where(coord < sensor_mask.shape, 1, 0)) == 0:
                         continue
                     sensor_mask[coord[0], coord[1], coord[2]] = 1
-                print(np.sum(sensor_mask))
         return sensor_mask, discretized_sensor_coords
 
 

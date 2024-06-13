@@ -23,7 +23,10 @@ class Transform:
             else:
                 raise Exception("Please supply the rotation in matrix format")
         elif about_axis:
-            self.rotation = scipy.spatial.transform.Rotation.from_rotvec(rotation)
+            if rotation == (0,0,0):
+                self.rotation = scipy.spatial.transform.Rotation.from_matrix(np.eye(3))
+            else:
+                self.rotation = scipy.spatial.transform.Rotation.from_rotvec(rotation)
         elif intrinsic:                
             self.rotation = scipy.spatial.transform.Rotation.from_euler("ZYX", rotation, degrees=False)  # intrinsic
         else:
