@@ -12,6 +12,7 @@
 *.json
 *.csv
 *.obj
+*.ply
 *.mtl
 *.blend
 *.zip
