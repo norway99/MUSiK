@@ -602,13 +602,19 @@ class Planewave(Transducer):
         return transducer
            
     
-    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=8,) -> np.ndarray:
-        scan_lines = self.window(scan_lines, window_factor)
-        scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties)
-        if self.compression_fac is not None:
-            scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
-        return scan_lines
+    # def preprocess(self, scan_lines, t_array, sim_properties, window_factor=8,) -> np.ndarray:
+    #     scan_lines = self.window(scan_lines, window_factor)
+    #     scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties)
+    #     if self.compression_fac is not None:
+    #         scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
+        
+    #     return scan_lines
                                        
-
-
-    
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1) -> np.ndarray:
+        scan_lines = self.window(scan_lines, window_factor)
+        # scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
+        # scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)
+        # scan_lines = self.envelope_detection(scan_lines)
+        # scan_lines = self.window(scan_lines, window_factor)
+        
+        return scan_lines

@@ -93,21 +93,25 @@ class Sensor: # sensor points are represented in global coordinate space for thi
         return sensor_coord_list
     
     def visualize(self, phantom, index=[slice(0, -1, 1), slice(0, -1, 1), 0], body_surface_mask = None):
-        global_mask = phantom.mask.copy()
+        # global_mask = phantom.mask.copy()
+        global_mask = np.where(phantom.mask != float(phantom.default_tissue), 1, 0)
         sensor_voxels = np.divide(self.sensor_coords, phantom.voxel_dims)
         phantom_centroid = np.array(phantom.mask.shape)//2 
         recenter_matrix = np.broadcast_to(phantom_centroid, sensor_voxels.shape)
         sensor_voxels = sensor_voxels + recenter_matrix
         sensor_voxels_disc = np.ndarray.astype(np.round(sensor_voxels), int)
+        if body_surface_mask is not None:
+            # global_mask = global_mask + body_surface_mask * (np.amax(phantom.mask) + 2)
+            global_mask = global_mask + body_surface_mask / 2
+            
         for voxel in sensor_voxels_disc:
             if np.prod(np.where(voxel >= 0, 1, 0)) == 0: 
                 continue
             if np.prod(np.where(voxel < global_mask.shape, 1, 0)) == 0:
                 continue
-            global_mask[voxel[0], voxel[1], voxel[2]] = np.amax(phantom.mask) + 1
+            # global_mask[voxel[0], voxel[1], voxel[2]] = np.amax(phantom.mask) + 1
+            global_mask[voxel[0], voxel[1], voxel[2]] = 1
         
-        if body_surface_mask is not None:
-            global_mask = global_mask + body_surface_mask * (np.amax(phantom.mask) + 2)
         plt.imshow(global_mask[index])
         plt.colorbar()
         plt.gray()

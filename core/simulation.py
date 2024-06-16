@@ -310,7 +310,7 @@ class Simulation:
                 source=not_transducer,
                 sensor=kwave.ksensor.kSensor(mask=sensor_mask, record=list(set(["p"]+additional_keys))),
                 simulation_options=simulation_options,
-                execution_options=kwave.options.simulation_execution_options.SimulationExecutionOptions(is_gpu_simulation=self.gpu)
+                execution_options=kwave.options.simulation_execution_options.SimulationExecutionOptions(is_gpu_simulation=self.gpu, show_sim_log=False)
             )            
                         
             # remove temporary files

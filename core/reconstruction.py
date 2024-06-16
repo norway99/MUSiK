@@ -357,54 +357,10 @@ class Compounding(Reconstruction):
         
         with multiprocessing.Pool(workers) as p:
             image_matrices = list(tqdm.tqdm(p.starmap(self.scanline_reconstruction, arguments), total=len(self.results)))
-        # for index in tqdm.tqdm(range(len(self.results))):
-        #     if index > running_index_list[transducer_count] - 1:
-        #         transducer_count += 1
-        #         transducer, transducer_transform = self.transducer_set[transducer_count]
-            
-        #     steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
-        #     dt = (self.results[index][0][-1] - self.results[index][0][0]) / self.results[index][0].shape[0]
-        #     preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
-            
-        #     t_start = int(np.ceil(transducer.width / 2 *  np.abs(np.sin(steering_angle)) / c0 / dt + len(transducer.get_pulse())/2))
-            
-        #     if len(preprocessed_data.shape) == 2:
-        #         preprocessed_data = preprocessed_data[:, t_start:]
-        #         preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
-        #     else:
-        #         preprocessed_data = preprocessed_data[:, :, t_start:]
-                                
-        #     transmit_position = transducer_transform.translation
-                        
-        #     if isinstance(transducer, Planewave):
-        #         transmit_rotation = transducer_transform.get()[:3, :3]
-        #         pw_rotation = np.array([[np.cos(steering_angle), -np.sin(steering_angle), 0], [np.sin(steering_angle), np.cos(steering_angle), 0], [0, 0, 1]])
-        #         rotation = np.matmul(pw_rotation, transmit_rotation)
-        #         normal = np.matmul(pw_rotation, np.array([1, 0, 0])) 
-        #     else:
-        #         transmit_rotation = transducer_transform.rotation.as_euler('ZYX')
-        #         nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
-        #         normal = nl_transform.apply_to_point((1, 0, 0)) # do we need this for the focused case?????
-                
-        #     xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2], indexing='ij')
-        #     distances = np.stack([xxx, yyy, zzz], axis=0)
-            
-        #     transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
-            
-        #     for centroid, rf_series in zip(element_centroids, preprocessed_data):
-        #         xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2], indexing='ij')
-        #         element_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
-        #         travel_times = ((transmit_dists + element_dists)/c0/dt).astype(np.int32)
-
-        #         # image_matrix += rf_series[travel_times]
-                
-        #         for i in range(len(x)):
-        #             for j in range(len(y)):
-        #                 for k in range(len(z)):
-        #                     image_matrix[i][j][k] += rf_series[travel_times[i][j][k]]
-
-        return np.sum(np.stack(image_matrices, axis=0), axis=0)
+        return image_matrices
+        # return np.sum(np.stack(image_matrices, axis=0), axis=0)
+        return np.prod(np.stack(image_matrices, axis=0), axis=0)
     
     
     def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt):
@@ -419,16 +375,14 @@ class Compounding(Reconstruction):
         preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
         
         # ---------------------------------------------------------------check this
-        t_start = int(np.ceil(transducer.width / 2 * np.abs(np.sin(steering_angle)) / c0 / dt + len(transducer.get_pulse())/2)) 
+        t_start = transducer.width / 2 * np.abs(np.sin(steering_angle)) # / c0 / dt + len(transducer.get_pulse())/2)
         print(f't_start: {t_start}')
         
         if len(preprocessed_data.shape) == 2:
-            preprocessed_data = preprocessed_data[:, t_start:]
-            # preprocessed_data[:, :t_start] = 0
+            # preprocessed_data = preprocessed_data[:, t_start:]
             preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
-        else:
-            preprocessed_data = preprocessed_data[:, :, t_start:]
-            # preprocessed_data[:, :, :t_start] = 0
+        # else:
+        #     preprocessed_data = preprocessed_data[:, :, t_start:]
                             
         transmit_position = transducer_transform.translation
         print(f'transmit_position: {transmit_position}')
@@ -460,7 +414,7 @@ class Compounding(Reconstruction):
         for centroid, rf_series in zip(element_centroids, preprocessed_data): # don't need to include zzz in this calculation
             xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2], indexing='ij')
             element_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
-            travel_times = np.round((transmit_dists + element_dists)/c0/dt).astype(np.int32)
+            travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
             
             image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]
         return image_matrix

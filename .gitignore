@@ -31,3 +31,7 @@ __pycache__
 *simulations
 *.dcm
 *.vox
+*.ply
+*.blend
+*.blend1
+*.mtl
