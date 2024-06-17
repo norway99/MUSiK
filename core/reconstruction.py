@@ -351,7 +351,8 @@ class Compounding(Reconstruction):
         transducer, transducer_transform = self.transducer_set[transducer_count]
         running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
 
-        for index in tqdm.tqdm(range(len(self.results))):i
+        for index in tqdm.tqdm(range(len(self.results))):
+            
             if index > running_index_list[transducer_count] - 1:
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
