@@ -468,9 +468,9 @@ class Compounding(Reconstruction):
             for entry in range(transducer.get_num_elements()):
                 element_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+transducer.get_sensors_per_el(), :], axis = 0)
                 pos += sensors_per_el
-            element_centroids = steering_transform.apply_to_points(element_centroids, inverse=True)
-        else:
-            element_centroids = pw_transform.apply_to_points(element_centroids, inverse=True)
+            element_centroids = transducer_transform.apply_to_points(element_centroids)
+        
+        element_centroids = pw_transform.apply_to_points(element_centroids, inverse=True)
 
         for centroid, rf_series in zip(element_centroids, preprocessed_data): 
             lx, ly, lz = np.meshgrid(local_x - centroid[0], local_y - centroid[1], local_z - centroid[2], indexing='ij')
