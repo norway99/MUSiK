@@ -28,6 +28,9 @@ import kwave.options.simulation_options
 import kwave.options.simulation_execution_options
 import kwave.kspaceFirstOrder3D
 
+import warnings
+warnings.filterwarnings("ignore", message="Attributes will soon be typed when saved and not saved")
+
 
 @contextmanager
 def tempdir():

@@ -123,7 +123,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
     
     # takes in a list of sensor coords (global coordinate system), transforms to match reference of transmit transducer, and discretizes
     def make_sensor_mask(self, sim_transducer, not_transducer, grid_voxel_size, transmit_transform = None):
-        if type(sim_transducer).__name__ == "Focused" and self.aperture_type == "transmit_as_receive":
+        if type(sim_transducer).__name__ == "Focused" or self.aperture_type == "transmit_as_receive":
             sensor_mask = not_transducer.indexed_mask
             sensor_mask = np.where(sensor_mask > 0, 1, sensor_mask)
             discretized_sensor_coords = None
@@ -155,7 +155,7 @@ class Sensor: # sensor points are represented in global coordinate space for thi
     def voxel_to_element(self, sim_properties, transmit, discretized_sensor_coords, sensor_data, additional_keys):
         computational_grid_size = (np.array(sim_properties.matrix_size) - 2 * np.array(sim_properties.PML_size))
         data = sensor_data['p'].T
-        if type(transmit).__name__ == "Focused" and self.aperture_type == "transmit_as_receive":
+        if type(transmit).__name__ == "Focused" or self.aperture_type == "transmit_as_receive":
             signals = transmit.not_transducer.combine_sensor_data(data)
             other_signals = []
             for other_key in additional_keys:

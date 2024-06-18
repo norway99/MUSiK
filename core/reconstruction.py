@@ -312,7 +312,7 @@ class Compounding(Reconstruction):
             pos += sensors_per_el[entry]
         return element_centroids
     
-    def compound(self, workers=8, resolution_multiplier=1, local=False): # not just plane-wave compounding, also works for saft (extended aperture with focused transducers)
+    def compound(self, workers=8, resolution_multiplier=1, local=True): # not just plane-wave compounding, also works for saft (extended aperture with focused transducers)
 
         if isinstance(self.transducer_set[0], Focused):
             # do nothing
