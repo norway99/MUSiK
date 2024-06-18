@@ -182,7 +182,8 @@ class TransducerSet:
             raise Exception("Please supply a valid label or index to remove a transducer")
         elif label is not None:
             index = self.find_transducer(label)
-        del self.transducers[index]
+        self.transducers.pop(index)
+        self.poses.pop(index)
         self.n_transducers -= 1
 
 
