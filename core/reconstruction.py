@@ -460,7 +460,17 @@ class Compounding(Reconstruction):
         
         local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)))
 
-        element_centroids = pw_transform.apply_to_points(element_centroids, inverse=True)
+        if self.sensor.aperture_type == "transmit_as_receive":
+            sensor_coords = transducer.sensor_coords
+            sensors_per_el = transducer.get_sensors_per_el()
+            element_centroids = np.zeros((transducer.get_num_elements(), 3))
+            pos = 0
+            for entry in range(transducer.get_num_elements()):
+                element_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+transducer.get_sensors_per_el(), :], axis = 0)
+                pos += sensors_per_el
+            element_centroids = steering_transform.apply_to_points(element_centroids, inverse=True)
+        else:
+            element_centroids = pw_transform.apply_to_points(element_centroids, inverse=True)
 
         for centroid, rf_series in zip(element_centroids, preprocessed_data): 
             lx, ly, lz = np.meshgrid(local_x - centroid[0], local_y - centroid[1], local_z - centroid[2], indexing='ij')
