@@ -279,7 +279,30 @@ class Experiment:
     
     def add_results(self):
         self.results = Results(os.path.join(self.simulation_path,'results'))
+
+
+    def visualize_sensor_mask(self, index=(slice(0, -1, 1), slice(0, -1, 1), 0), body_surface_mask = None):
+
+        global_mask = np.zeros(self.phantom.mask.shape)
+        sensor_voxels = np.divide(self.sensor.sensor_coords, self.phantom.voxel_dims)
+        phantom_centroid = np.array(self.phantom.mask.shape)//2 
+        recenter_matrix = np.broadcast_to(phantom_centroid, sensor_voxels.shape)
+        sensor_voxels = sensor_voxels + recenter_matrix
+        sensor_voxels_disc = np.ndarray.astype(np.round(sensor_voxels), int)
+
+        for voxel in sensor_voxels_disc:
+            if np.prod(np.where(voxel >= 0, 1, 0)) == 0: 
+                continue
+            if np.prod(np.where(voxel < global_mask.shape, 1, 0)) == 0:
+                continue
+            global_mask[voxel[0], voxel[1], voxel[2]] = 1
         
+    plt.imshow(self.phantom.mask[tuple(index)] + global_mask[tuple(index)], cmap='gray')
+    plt.imshow(np.stack((np.zeros_like(global_mask[tuple(index)]),
+                            global_mask[tuple(index)]*255,
+                            global_mask[tuple(index)]*255,
+                            global_mask[tuple(index)]*255), axis=-1))
+
         
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
         simulation = Simulation(self.sim_properties, 
