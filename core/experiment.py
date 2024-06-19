@@ -17,6 +17,8 @@ from transducer_set import TransducerSet
 from simulation import Simulation, SimProperties
 from sensor import Sensor
 
+from matplotlib import pyplot as plt
+
 
 class Results:
     
@@ -297,11 +299,11 @@ class Experiment:
                 continue
             global_mask[voxel[0], voxel[1], voxel[2]] = 1
         
-    plt.imshow(self.phantom.mask[tuple(index)] + global_mask[tuple(index)], cmap='gray')
-    plt.imshow(np.stack((np.zeros_like(global_mask[tuple(index)]),
-                            global_mask[tuple(index)]*255,
-                            global_mask[tuple(index)]*255,
-                            global_mask[tuple(index)]*255), axis=-1))
+        plt.imshow(self.phantom.mask[tuple(index)] + global_mask[tuple(index)], cmap='gray')
+        plt.imshow(np.stack((np.zeros_like(global_mask[tuple(index)]),
+                                global_mask[tuple(index)]*255,
+                                global_mask[tuple(index)]*255,
+                                global_mask[tuple(index)]*255), axis=-1))
 
         
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):

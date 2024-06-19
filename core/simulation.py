@@ -54,7 +54,7 @@ class SimProperties:
                  bona           = 6,                       # parameter b/a determining degree of nonlinear acoustic effects
                  alpha_coeff    = 0.75, 	               # [dB/(MHz^y cm)]
                  alpha_power    = 1.5,                     # attenuation power scaling
-                 grid_lambda    = 4,                       # multiple of nyquist limit for voxel size
+                 grid_lambda    = 2,                       # multiple of nyquist limit for voxel size
     ):
         
         # Set time and voxel size dynamically - time based on grid length

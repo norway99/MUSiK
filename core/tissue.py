@@ -35,8 +35,8 @@ class Tissue:
                  rho=1000,
                  sigma=1, 
                  scale=0.1, 
-                 label=None,
-                 anisotropy=(1,1,1),):
+                 label=None,):
+                #  anisotropy=(1,1,1),):
 
         self.name = name
         self.c = c
@@ -44,7 +44,7 @@ class Tissue:
         self.sigma = sigma
         self.scale = scale # [s1, s2, s3, ...]
         self.label = label
-        self.anisotropy = anisotropy # Tissue anisotropy is fairly complex to implement
+        # self.anisotropy = anisotropy # Tissue anisotropy is fairly complex to implement
 	
     def save(self,):
         # utils.dict_to_json(self.__dict__)
@@ -59,6 +59,6 @@ class Tissue:
         self.sigma = dictionary['sigma']
         self.scale = dictionary['scale']
         self.label = dictionary['label']
-        self.anisotropy = dictionary['anisotropy']
+        # self.anisotropy = dictionary['anisotropy']
         return self
         
