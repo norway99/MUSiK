@@ -312,7 +312,7 @@ class Compounding(Reconstruction):
             pos += sensors_per_el[entry]
         return element_centroids
     
-    def compound(self, workers=8, resolution_multiplier=1, local=True): # not just plane-wave compounding, also works for saft (extended aperture with focused transducers)
+    def compound(self, workers=8, resolution_multiplier=1, local=True, pressure_field=None): # not just plane-wave compounding, also works for saft (extended aperture with focused transducers)
 
         if isinstance(self.transducer_set[0], Focused):
             # do nothing
@@ -336,9 +336,9 @@ class Compounding(Reconstruction):
         
         resolution = max(dt*c0, 2*c0/self.transducer_set.get_lowest_frequency()) / 4 / resolution_multiplier # make sure this works
         
-        x = np.arange(-matrix_dims[0]*voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2, step=resolution)
-        y = np.arange(-matrix_dims[1]*voxel_dims[1]/2, matrix_dims[1]*voxel_dims[1]/2, step=resolution)
-        z = np.arange(-matrix_dims[2]*voxel_dims[2]/2, matrix_dims[2]*voxel_dims[2]/2, step=resolution)
+        x = np.arange(-matrix_dims[0]*voxel_dims[0]/2 + voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2 + voxel_dims[0]/2, step=resolution)
+        y = np.arange(-matrix_dims[1]*voxel_dims[1]/2 + voxel_dims[1]/2, matrix_dims[1]*voxel_dims[1]/2 + voxel_dims[1]/2, step=resolution)
+        z = np.arange(-matrix_dims[2]*voxel_dims[2]/2 + voxel_dims[2]/2, matrix_dims[2]*voxel_dims[2]/2 + voxel_dims[2]/2, step=resolution)
                 
         image_matrix = np.zeros((len(x), len(y), len(z)))
         
@@ -357,7 +357,7 @@ class Compounding(Reconstruction):
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
             
-            arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution))
+            arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution, pressure_field))
         
         with multiprocessing.Pool(workers) as p:
             if not local:
@@ -368,7 +368,7 @@ class Compounding(Reconstruction):
         return np.sum(np.stack(image_matrices, axis=0), axis=0)
         
     
-    def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution):
+    def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution, pressure_field=None):
         
         if index > running_index_list[transducer_count] - 1:
             transducer_count += 1
@@ -415,7 +415,7 @@ class Compounding(Reconstruction):
             image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]
         return image_matrix
     
-    def scanline_reconstruction_local(self, index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution):
+    def scanline_reconstruction_local(self, index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution, pressure_field=None):
         
         if index > running_index_list[transducer_count] - 1:
             transducer_count += 1
@@ -472,12 +472,23 @@ class Compounding(Reconstruction):
         
         element_centroids = pw_transform.apply_to_points(element_centroids, inverse=True)
 
+        if pressure_field is not None:
+            vox_size = (self.phantom.baseline[0]/transducer.get_freq())/4
+            normalized_pfield = pressure_field/np.max(pressure_field)
+            recenter_pfield = np.vstack((np.zeros(pfield_shape), normalized_pfield))
+            pfield_xs = np.arange(-pfield.shape[0]/2*vox_size+vox_size/2, pfield.shape[0]/2*vox_size+vox_size/2, step=vox_size)
+            pfield_ys = np.arange(-pfield.shape[1]/2*vox_size+vox_size/2, pfield.shape[1]/2*vox_size+vox_size/2, step=vox_size)
+            f = interpolate.interp2d(pfield_ys, pfield_xs, recenter_pfield, kind='linear')
+            apodizations = f(local_y, local_x)
+        else:
+            apodizations = np.ones(len(x), len(y))
+
         for centroid, rf_series in zip(element_centroids, preprocessed_data): 
             lx, ly, lz = np.meshgrid(local_x - centroid[0], local_y - centroid[1], local_z - centroid[2], indexing='ij')
             element_dists = np.sqrt(lx**2 + ly**2 + lz**2)
             travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
             
-            local_image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]
+            local_image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]*apodizations[:len(x), :len(y)]
 
         local_image_matrix = np.abs(hilbert(local_image_matrix, axis = 0))
         
