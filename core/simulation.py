@@ -28,8 +28,8 @@ import kwave.options.simulation_options
 import kwave.options.simulation_execution_options
 import kwave.kspaceFirstOrder3D
 
-import warnings
-warnings.filterwarnings("ignore", message="Attributes will soon be typed when saved and not saved")
+import logging
+logging.getLogger().setLevel(logging.ERROR)
 
 
 @contextmanager
@@ -46,27 +46,29 @@ def tempdir():
 
 class SimProperties:
     def __init__(self,
-                 grid_size   = (128e-3,32e-3,32e-3),    # simulation grid size now provided in units of meters [m]
-                 voxel_size  = (0.1e-3,0.1e-3,0.1e-3),  # simulation voxel size provided independent of phantom size
-                 PML_size    = (32,8,8),                # PML still provided as a voxel padding
-                 PML_alpha   = 2,
-                 t_end       = 2e-5,                    # [s]
-                 bona        = 6,                       # parameter b/a determining degree of nonlinear acoustic effects
-                 alpha_coeff = 0.75, 	                # [dB/(MHz^y cm)]
-                 alpha_power = 1.5,
+                 grid_size      = (128e-3,32e-3,32e-3),    # simulation grid size now provided in units of meters [m]
+                 voxel_size     = (0.1e-3,0.1e-3,0.1e-3),  # simulation voxel size provided independent of phantom size
+                 PML_size       = (32,8,8),                # PML still provided as a voxel padding
+                 PML_alpha      = 2,
+                 t_end          = 2e-5,                    # [s]
+                 bona           = 6,                       # parameter b/a determining degree of nonlinear acoustic effects
+                 alpha_coeff    = 0.75, 	               # [dB/(MHz^y cm)]
+                 alpha_power    = 1.5,                     # attenuation power scaling
+                 grid_lambda    = 4,                       # multiple of nyquist limit for voxel size
     ):
         
         # Set time and voxel size dynamically - time based on grid length
-        self.grid_size   = np.array(grid_size)
-        self.voxel_size  = np.array(voxel_size)
-        self.PML_size    = np.array(PML_size)
-        self.PML_alpha   = PML_alpha
-        self.t_end       = t_end
-        self.bona        = bona
-        self.alpha_coeff = alpha_coeff
-        self.alpha_power = alpha_power
-        self.matrix_size = self.calc_matrix_size(self.grid_size, self.voxel_size)
-        self.bounds      = self.calc_bounding_vertices(self.matrix_size, PML_size, self.voxel_size)
+        self.grid_size      = np.array(grid_size)
+        self.voxel_size     = np.array(voxel_size)
+        self.PML_size       = np.array(PML_size)
+        self.PML_alpha      = PML_alpha
+        self.t_end          = t_end
+        self.bona           = bona
+        self.alpha_coeff    = alpha_coeff
+        self.alpha_power    = alpha_power
+        self.matrix_size    = self.calc_matrix_size(self.grid_size, self.voxel_size, self.PML_size)
+        self.bounds         = self.calc_bounding_vertices(self.matrix_size, PML_size, self.voxel_size)
+        self.grid_lambda    = grid_lambda
     
     
     def save(self, filepath):
@@ -84,18 +86,18 @@ class SimProperties:
         return simprops
     
     
-    def optimize_simulation_parameters(self, frequency, sos=1540, transducer_dims=None):
+    def optimize_simulation_parameters(self, frequency, sos=1540, transducer_dims=None, grid_lambda=None):
         self.t_end       = self.__optimize_simulation_duration(sos=sos)
-        self.voxel_size  = self.__optimize_voxel_size(frequency=frequency, sos=sos)
-        self.matrix_size = self.calc_matrix_size(self.grid_size, self.voxel_size, transducer_dims=transducer_dims)
+        if grid_lambda is None:
+            grid_lambda = self.grid_lambda
+        self.voxel_size  = self.__optimize_voxel_size(frequency=frequency, sos=sos, grid_lambda=grid_lambda)
+        self.matrix_size = self.calc_matrix_size(self.grid_size, self.voxel_size, self.PML_size, transducer_dims=transducer_dims)
         self.bounds      = self.calc_bounding_vertices(self.matrix_size, self.PML_size, self.voxel_size)
-        # print(f'optimizing simulation parameters: [voxel_size ({self.voxel_size[0]}m)^3], [duration {self.t_end}s], [matrix_size {self.matrix_size}], [functional_size {np.array(self.matrix_size) - 2 * np.array(self.PML_size)}]')
     
     
-    def __optimize_voxel_size(self, frequency=4e6, sos=1540, lambda_factor=1):
-        # refer to k-wave documentation and manual for the precise calculation of voxel size, dependent on the timestep and the pulse frequency
-        wavelength = sos / frequency
-        voxel_dims = wavelength / (4 * lambda_factor)
+    def __optimize_voxel_size(self, frequency=2e6, sos=1540, grid_lambda=2):
+        # Voxel size is set by default to 1/4 the wavelength of the highest frequency, 2x higher than the Nyquist limit
+        voxel_dims = sos / (2 * frequency * grid_lambda)
         return np.array((voxel_dims, voxel_dims, voxel_dims))
     
     
@@ -118,7 +120,7 @@ class SimProperties:
 
 
     # Computation in kwave utilizes a fourier-space calculation, therefore computational grid sizes require small prime factorizations to be efficient
-    def calc_matrix_size(self, grid_size, voxel_size, transducer_dims=None):
+    def calc_matrix_size(self, grid_size, voxel_size, PML_size, transducer_dims=None):
         matrix_size = []
         
         # If matrix size smaller than transducer size, expand matrix size
@@ -128,7 +130,7 @@ class SimProperties:
             if grid_size[2] < transducer_dims[1] * 1.5:
                 grid_size[2] = transducer_dims[1] * 1.5
                 
-        raw_matrix_size = grid_size / voxel_size
+        raw_matrix_size = grid_size / voxel_size # + PML_size
         
         for dim in range(3):
             lpfs = []
@@ -214,12 +216,11 @@ class Simulation:
                 sim_sensor = self.sensor
                 
                 if not dry:                    
-                    # affine = transducer.ray_transforms[index] * self.transducer_set.poses[transducer_number]
                     affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
-                    print('preparation for sim {:4d} completed in {:15.2f} seconds\n'.format(self.index, round(time.time() - start_time, 3)))
+                    print('preparation for sim {:4d} completed in {:5.2f} seconds'.format(self.index, round(time.time() - start_time, 3)))
                     return prepped
                 else:
                     affine = geometry.Transform()
@@ -234,11 +235,10 @@ class Simulation:
     def __run_by_index(self, index, dry=False):
         if not dry:
             start_time = time.time()
-            # print(f'running simulation index:       {index:11d}')
             time_array, signals, other_signals = self.__run_simulation(self.prepped_simulation, self.additional_keys)
             self.__write_signal(index, signals, time_array)
             self.__write_other_signals(index, other_signals)
-            print('simulation {:6d} completed in {:5.2f} seconds'.format(index, round(time.time() - start_time, 3)))
+            print('simulation          {:4d} completed in {:5.2f} seconds'.format(index, round(time.time() - start_time, 3)))
             return signals, time_array
     
     
