@@ -452,9 +452,9 @@ class Compounding(Reconstruction):
         local_vertices = pw_transform.apply_to_points(global_vertices, inverse=True)
         local_mins = np.min(local_vertices, axis=0)
         local_maxs = np.max(local_vertices, axis=0)
-        local_x = np.arange(local_mins[0], local_maxs[0], step=resolution)
-        local_y = np.arange(local_mins[1], local_maxs[1], step=resolution)
-        local_z = np.arange(local_mins[2], local_maxs[2], step=resolution)
+        local_x = np.arange(local_mins[0], local_maxs[0]+resolution, step=resolution)
+        local_y = np.arange(local_mins[1], local_maxs[1]+resolution, step=resolution)
+        local_z = np.arange(local_mins[2], local_maxs[2]+resolution, step=resolution)
         xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
         distances = np.stack([xxx, yyy, zzz], axis=0)
         transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
@@ -482,14 +482,14 @@ class Compounding(Reconstruction):
             f = interpolate.interp2d(pfield_ys, pfield_xs, recenter_pfield, kind='linear')
             apodizations = f(local_y, local_x)
         else:
-            apodizations = np.ones(len(x), len(y))
+            apodizations = np.ones(len(local_x), len(local_y))
 
         for centroid, rf_series in zip(element_centroids, preprocessed_data): 
             lx, ly, lz = np.meshgrid(local_x - centroid[0], local_y - centroid[1], local_z - centroid[2], indexing='ij')
             element_dists = np.sqrt(lx**2 + ly**2 + lz**2)
             travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
             
-            local_image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]*apodizations[:len(x), :len(y)]
+            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]]*apodizations[:len(local_x), :len(local_y)]
 
         local_image_matrix = np.abs(hilbert(local_image_matrix, axis = 0))
         
