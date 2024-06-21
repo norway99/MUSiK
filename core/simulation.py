@@ -130,7 +130,7 @@ class SimProperties:
             if grid_size[2] < transducer_dims[1] * 1.5:
                 grid_size[2] = transducer_dims[1] * 1.5
                 
-        raw_matrix_size = grid_size / voxel_size # + PML_size
+        raw_matrix_size = grid_size / voxel_size + PML_size
         
         for dim in range(3):
             lpfs = []

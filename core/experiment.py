@@ -307,6 +307,7 @@ class Experiment:
 
         
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
+        assert index < len(self),  f'index {index} is outside experiment length {len(self)}'
         simulation = Simulation(self.sim_properties, 
                                 self.phantom, 
                                 self.transducer_set, 

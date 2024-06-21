@@ -438,29 +438,29 @@ class Compounding(Reconstruction):
         transmit_position = np.array([0, 0, 0])
         
         if isinstance(transducer, Planewave):
-            steering_transform = geometry.Transform(rotation = np.array([[np.cos(steering_angle), -np.sin(steering_angle), 0], 
-                                                                  [np.sin(steering_angle), np.cos(steering_angle), 0], 
-                                                                  [0, 0, 1]]),
-                                            from_matrix = True)# I'm sure there's a possible maybe here?
-            pw_transform = steering_transform * transducer_transform
-        else: # haven't yet edited this 
-            transmit_rotation = transducer_transform.rotation.as_euler('ZYX')
-            nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
-            normal = nl_transform.apply_to_point((1, 0, 0)) # do we need this for the focused case?????
+            steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
+            normal = np.array([1, 0, 0])
+        else:
+            steering_transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
+        beam_transform = transducer_transform * steering_transform
         
-        normal = np.array([1, 0, 0])
         global_bounds = np.array([[np.min(x), np.max(x)], [np.min(y), np.max(y)],[np.min(z), np.max(z)]])
         xs, ys, zs = np.meshgrid(global_bounds[0], global_bounds[1], global_bounds[2], indexing='ij')
         global_vertices = np.stack((xs.flatten(), ys.flatten(), zs.flatten()), axis=-1)
-        local_vertices = pw_transform.apply_to_points(global_vertices, inverse=True)
+        local_vertices = beam_transform.apply_to_points(global_vertices, inverse=True)
+        
         local_mins = np.min(local_vertices, axis=0)
         local_maxs = np.max(local_vertices, axis=0)
         local_x = np.arange(local_mins[0], local_maxs[0]+resolution, step=resolution)
         local_y = np.arange(local_mins[1], local_maxs[1]+resolution, step=resolution)
         local_z = np.arange(local_mins[2], local_maxs[2]+resolution, step=resolution)
         xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
-        distances = np.stack([xxx, yyy, zzz], axis=0)
-        transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
+        
+        if isinstance(transducer, Planewave):
+            distances = np.stack([xxx, yyy, zzz], axis=0)
+            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
+        else:
+            transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
         
         local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)))
 
@@ -470,19 +470,18 @@ class Compounding(Reconstruction):
             element_centroids = np.zeros((transducer.get_num_elements(), 3))
             pos = 0
             for entry in range(transducer.get_num_elements()):
-                element_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+transducer.get_sensors_per_el(), :], axis = 0)
+                element_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+sensors_per_el, :], axis = 0)
                 pos += sensors_per_el
             element_centroids = transducer_transform.apply_to_points(element_centroids)
         
-        element_centroids = pw_transform.apply_to_points(element_centroids, inverse=True)
+        element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
 
         if pressure_field is not None:
             vox_size = (self.phantom.baseline[0]/transducer.get_freq())/4
             normalized_pfield = pressure_field/np.max(pressure_field)
-            recenter_pfield = np.vstack((np.zeros(normalized_pfield.shape), normalized_pfield))
-            pfield_xs = np.arange(-recenter_pfield.shape[0]/2*vox_size+vox_size/2, recenter_pfield.shape[0]/2*vox_size+vox_size/2, step=vox_size)
-            pfield_ys = np.arange(-recenter_pfield.shape[1]/2*vox_size+vox_size/2, recenter_pfield.shape[1]/2*vox_size+vox_size/2, step=vox_size)
-            f = interpolate.interp2d(pfield_ys, pfield_xs, recenter_pfield, kind='linear')
+            pfield_xs = np.arange(0, normalized_pfield.shape[0]*vox_size, step=vox_size)
+            pfield_ys = np.arange(-normalized_pfield.shape[1]/2*vox_size+vox_size/2, normalized_pfield.shape[1]/2*vox_size+vox_size/2, step=vox_size)
+            f = interpolate.interp2d(pfield_ys, pfield_xs, normalized_pfield, kind='linear', fill_value=0)
             apodizations = np.repeat(f(local_y, local_x,), len(local_z)).reshape(len(local_x), len(local_y), len(local_z))
         else:
             apodizations = np.ones((len(local_x), len(local_y), len(local_z)))
@@ -492,13 +491,13 @@ class Compounding(Reconstruction):
             element_dists = np.sqrt(lx**2 + ly**2 + lz**2)
             travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
             
-            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]]*apodizations[:len(local_x), :len(local_y), :len(local_z)]
+            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
 
         local_image_matrix = np.abs(hilbert(local_image_matrix, axis = 0))
         
         flat = local_image_matrix.flatten()
         local_coords = np.stack((xxx.flatten(), yyy.flatten(), zzz.flatten()), axis=-1)
-        local_2_global = pw_transform.apply_to_points(local_coords)
+        local_2_global = beam_transform.apply_to_points(local_coords)
         interpolator = NearestNDInterpolator(local_2_global, flat)
         
         gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
