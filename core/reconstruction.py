@@ -303,7 +303,7 @@ class Compounding(Reconstruction):
 
         super().__init__(experiment)
 
-    def __get_element_centroids(self): # in global coordinates
+    def __get_element_centroids(self, sim_transducer): # in global coordinates
         sensor_coords = self.sensor.sensor_coords
         sensors_per_el = self.sensor.sensors_per_el
         element_centroids = np.zeros((sensors_per_el.size, 3))
@@ -344,10 +344,11 @@ class Compounding(Reconstruction):
         image_matrix = np.zeros((len(x), len(y), len(z)))
         
         # note that origin is at center of the 3d image in global coordinate system
-        
-        arguments = []
-        
+
         element_centroids = self.__get_element_centroids()
+
+        arguments = []
+
         transducer_count = 0
         transducer, transducer_transform = self.transducer_set[transducer_count]
         running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
@@ -358,7 +359,7 @@ class Compounding(Reconstruction):
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
             
-            arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution, pressure_field))
+            arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field))
         
         with multiprocessing.Pool(workers) as p:
             if not local:
@@ -372,7 +373,7 @@ class Compounding(Reconstruction):
             return image_matrices
         
     
-    def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution, pressure_field=None):
+    def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field=None):
         
         if index > running_index_list[transducer_count] - 1:
             transducer_count += 1
@@ -393,7 +394,7 @@ class Compounding(Reconstruction):
         #     preprocessed_data = preprocessed_data[:, :, t_start:]
                             
         transmit_position = transducer_transform.translation
-        
+
         if isinstance(transducer, Planewave):
             transmit_rotation = transducer_transform.get()[:3, :3] # maybe inverse?
             pw_rotation = np.array([[np.cos(steering_angle), -np.sin(steering_angle), 0], [np.sin(steering_angle), np.cos(steering_angle), 0], [0, 0, 1]]) # I'm sure there's a possible maybe here?
@@ -419,7 +420,7 @@ class Compounding(Reconstruction):
             image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]
         return image_matrix
     
-    def scanline_reconstruction_local(self, index, running_index_list, transducer_count, transducer, transducer_transform, element_centroids, x, y, z, c0, dt, resolution, pressure_field=None):
+    def scanline_reconstruction_local(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field=None):
         
         if index > running_index_list[transducer_count] - 1:
             transducer_count += 1
@@ -430,7 +431,6 @@ class Compounding(Reconstruction):
         dt = (self.results[index][0][-1] - self.results[index][0][0]) / (self.results[index][0].shape[0]-1)
         preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
         
-        t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
         
         if len(preprocessed_data.shape) == 2:
             preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
@@ -440,8 +440,11 @@ class Compounding(Reconstruction):
         if isinstance(transducer, Planewave):
             steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
             normal = np.array([1, 0, 0])
+            t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
         else:
             steering_transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
+            t_start = 0
+
         beam_transform = transducer_transform * steering_transform
         
         global_bounds = np.array([[np.min(x), np.max(x)], [np.min(y), np.max(y)],[np.min(z), np.max(z)]])
@@ -455,27 +458,43 @@ class Compounding(Reconstruction):
         local_y = np.arange(local_mins[1], local_maxs[1]+resolution, step=resolution)
         local_z = np.arange(local_mins[2], local_maxs[2]+resolution, step=resolution)
         xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
-        
-        if isinstance(transducer, Planewave):
-            distances = np.stack([xxx, yyy, zzz], axis=0)
-            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
-        else:
-            transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
-        
-        local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)))
 
-        if self.sensor.aperture_type == "transmit_as_receive":
+        if isinstance(transducer, Focused): 
             sensor_coords = transducer.sensor_coords
             sensors_per_el = transducer.get_sensors_per_el()
-            element_centroids = np.zeros((transducer.get_num_elements(), 3))
+            transmit_centroids = np.zeros((transducer.get_num_elements(), 3))
             pos = 0
             for entry in range(transducer.get_num_elements()):
-                element_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+sensors_per_el, :], axis = 0)
+                transmit_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+sensors_per_el, :], axis = 0)
                 pos += sensors_per_el
-            element_centroids = transducer_transform.apply_to_points(element_centroids)
-        
-        element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
+            if self.sensor.aperture_type == "transmit_as_receive":
+                element_centroids = transmit_centroids
+            else:
+                element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
+                label = transducer.get_label()
+                index = self.transducer_set.find_transducer(label)
+                start_element = 0
+                for t in self.transducer_set.transducers[:index]:
+                    start_element += t.get_num_elements()
+                element_centroids[start_element:transducer.get_num_elements(), :] = transducer.transmit_centroids        
+            transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
+        else:
+            sensor_coords = transducer.sensor_coords
+            sensors_per_el = transducer.get_sensors_per_el()
+            transmit_centroids = np.zeros((transducer.get_num_elements(), 3))
+            pos = 0
+            for entry in range(transducer.get_num_elements()):
+                transmit_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+sensors_per_el, :], axis = 0)
+                pos += sensors_per_el
+            if self.sensor.aperture_type == "transmit_as_receive":
+                element_centroids = steering_transform.apply_to_points(transmit_centroids, inverse=True)
+            else:
+                element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
+            distances = np.stack([xxx, yyy, zzz], axis=0)
+            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
 
+        local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)))
+        
         if pressure_field is not None:
             vox_size = (self.phantom.baseline[0]/transducer.get_freq())/4
             normalized_pfield = pressure_field/np.max(pressure_field)

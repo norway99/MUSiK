@@ -107,6 +107,15 @@ class Sensor: # sensor points are represented in global coordinate space for thi
                 if transmit_transform is None:
                     raise Exception("Please supply a transmit transducer affine transformation")
                 transformed_sensor_coords = transmit_transform.apply_to_points(self.sensor_coords, inverse=True)
+                if isinstance(sim_transducer, Focused):
+                    label = sim_transducer.get_label()
+                    if index is None:
+                        raise Exception("To use n focused transducers with a synthetic/extended aperture, please instantiate with n unique labels.")
+                    index = self.transducer_set.find_transducer(label)
+                    start_coord = 0
+                    for t in self.transducer_set.transducers[:index]:
+                        start_coord += t.get_num_elements()*t.get_sensors_per_el()
+                    transformed_sensor_coords[start_coord:(sim_transducer.get_num_elements()*t.get_sensors_per_el()), :] = sim_transducer.sensor_coords
                 transformed_sensor_coords = np.divide(transformed_sensor_coords, grid_voxel_size)
                 mask_centroid = np.array(sensor_mask.shape)/2
                 mask_centroid[0] = 0
