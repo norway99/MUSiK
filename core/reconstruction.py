@@ -497,7 +497,7 @@ class Compounding(Reconstruction):
         
         if pressure_field is not None:
             vox_size = (self.phantom.baseline[0]/transducer.get_freq())/4
-            normalized_pfield = pressure_field/np.max(pressure_field)
+            normalized_pfield = pressure_field/np.sum(pressure_field)
             pfield_xs = np.arange(0, normalized_pfield.shape[0]*vox_size, step=vox_size)
             pfield_ys = np.arange(-normalized_pfield.shape[1]/2*vox_size+vox_size/2, normalized_pfield.shape[1]/2*vox_size+vox_size/2, step=vox_size)
             f = interpolate.interp2d(pfield_ys, pfield_xs, normalized_pfield, kind='linear', fill_value=0)
