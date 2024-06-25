@@ -303,7 +303,7 @@ class Compounding(Reconstruction):
 
         super().__init__(experiment)
 
-    def __get_element_centroids(self, sim_transducer): # in global coordinates
+    def __get_element_centroids(self): # in global coordinates
         sensor_coords = self.sensor.sensor_coords
         sensors_per_el = self.sensor.sensors_per_el
         element_centroids = np.zeros((sensors_per_el.size, 3))
@@ -460,6 +460,7 @@ class Compounding(Reconstruction):
         xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
 
         if isinstance(transducer, Focused): 
+            assert self.sensor.aperture_type == "extended_aperture", "For focused transducers, the sensor aperture type must be 'extended_aperture'"
             sensor_coords = transducer.sensor_coords
             sensors_per_el = transducer.get_sensors_per_el()
             transmit_centroids = np.zeros((transducer.get_num_elements(), 3))
@@ -467,16 +468,13 @@ class Compounding(Reconstruction):
             for entry in range(transducer.get_num_elements()):
                 transmit_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+sensors_per_el, :], axis = 0)
                 pos += sensors_per_el
-            if self.sensor.aperture_type == "transmit_as_receive":
-                element_centroids = transmit_centroids
-            else:
-                element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
-                label = transducer.get_label()
-                index = self.transducer_set.find_transducer(label)
-                start_element = 0
-                for t in self.transducer_set.transducers[:index]:
-                    start_element += t.get_num_elements()
-                element_centroids[start_element:transducer.get_num_elements(), :] = transducer.transmit_centroids        
+            element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
+            label = transducer.get_label()
+            index = self.transducer_set.find_transducer(label)
+            start_element = 0
+            for t in self.transducer_set.transducers[:index]:
+                start_element += t.get_num_elements()
+            element_centroids[start_element:transducer.get_num_elements(), :] = transducer.transmit_centroids        
             transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
         else:
             sensor_coords = transducer.sensor_coords

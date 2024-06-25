@@ -460,7 +460,7 @@ class Focused(Transducer):
                  height                     = 1e-2,         # transducer total width
                  
                  radius                     = float('inf'),
-                 focus_azimuth              = 20e-3,
+                 focus_azimuth              = float('inf'),
                  focus_elevation            = float('inf'),
                  sensor_sampling_scheme     = 'centroid',
                  sweep                      = np.pi/3,
@@ -473,8 +473,8 @@ class Focused(Transducer):
                  compression_fac            = None,
                  normalize                  = True,
                  ):
-        if focus_azimuth == float('inf'):
-            print('Focused transducers must have a finite focal length. Consider instantiating a plane-wave transducer if you require infinite focal length.')
+        # if focus_azimuth == float('inf'):
+        #     print('Focused transducers must have a finite focal length. Consider instantiating a plane-wave transducer if you require infinite focal length.')
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
                          width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
                          sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, harmonic, bandwidth, compression_fac, normalize)

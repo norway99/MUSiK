@@ -161,7 +161,7 @@ class TransducerSet:
             if transducer.label == label:
                 break
             ctr += 1
-        if ctr == len(self.transducer_list):
+        if ctr == len(self.transducers):
             return None
         else:
             return ctr
