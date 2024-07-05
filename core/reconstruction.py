@@ -429,7 +429,7 @@ class Compounding(Reconstruction):
         steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
         dt = (self.results[index][0][-1] - self.results[index][0][0]) / (self.results[index][0].shape[0]-1)
-        preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
+        preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8, saft=True)
         
         
         if len(preprocessed_data.shape) == 2:
@@ -439,10 +439,10 @@ class Compounding(Reconstruction):
         
         if isinstance(transducer, Planewave):
             steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
-            normal = np.array([1, 0, 0])
             t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
         else:
             steering_transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
+            # print(f'steering_transform: {steering_transform.rotation.as_euler("ZYX")}')
             t_start = 0
 
         beam_transform = transducer_transform * steering_transform
@@ -474,8 +474,9 @@ class Compounding(Reconstruction):
             start_element = 0
             for t in self.transducer_set.transducers[:index]:
                 start_element += t.get_num_elements()
-            element_centroids[start_element:transducer.get_num_elements(), :] = transducer.transmit_centroids        
+            element_centroids[start_element:transducer.get_num_elements(), :] = transmit_centroids
             transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
+            # timedelays = np.round(((np.linalg.norm(transmit_centroids - np.array(((transducer.focus_azimuth,0,0))), axis=1)) - transducer.focus_azimuth) / c0 / dt).astype(np.int32)
         else:
             sensor_coords = transducer.sensor_coords
             sensors_per_el = transducer.get_sensors_per_el()
@@ -489,7 +490,8 @@ class Compounding(Reconstruction):
             else:
                 element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
             distances = np.stack([xxx, yyy, zzz], axis=0)
-            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
+            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances,  np.array((1,0,0))))
+            # timedelays = np.zeros(transmit_dists.shape)
 
         local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)))
         
@@ -503,18 +505,19 @@ class Compounding(Reconstruction):
         else:
             apodizations = np.ones((len(local_x), len(local_y), len(local_z)))
 
-        for centroid, rf_series in zip(element_centroids, preprocessed_data): 
+        for centroid, rf_series in zip(element_centroids, preprocessed_data):
             lx, ly, lz = np.meshgrid(local_x - centroid[0], local_y - centroid[1], local_z - centroid[2], indexing='ij')
             element_dists = np.sqrt(lx**2 + ly**2 + lz**2)
             travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
-            
             local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
 
         local_image_matrix = np.abs(hilbert(local_image_matrix, axis = 0))
+        # return local_image_matrix
         
         flat = local_image_matrix.flatten()
         local_coords = np.stack((xxx.flatten(), yyy.flatten(), zzz.flatten()), axis=-1)
         local_2_global = beam_transform.apply_to_points(local_coords)
+        # local_2_global = transducer_transform.apply_to_points(local_coords)
         interpolator = NearestNDInterpolator(local_2_global, flat)
         
         gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
