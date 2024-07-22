@@ -615,7 +615,7 @@ class Planewave(Transducer):
         
     #     return scan_lines
                                        
-    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1) -> np.ndarray:
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
         # scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
         # scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)

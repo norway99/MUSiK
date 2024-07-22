@@ -132,7 +132,7 @@ class Phantom:
 	
  
 	# set mask and estimate tissues from a houndsfield unit-scaled image
-    def create_from_image(self, image, input_voxel_size, target_voxel_size=None, transfer_fn=None):
+    def create_from_image(self, image, input_voxel_size, target_voxel_size=None, transfer_fn=None, scale_w_noise=False):
         if target_voxel_size is None:
             target_voxel_size = self.voxel_dims
         if transfer_fn is None:
@@ -167,6 +167,11 @@ class Phantom:
             return 0
         
         new_phantom = interp(points)
+        
+        if scale_w_noise:
+            scaled_phantom = (new_phantom - np.amin(new_phantom)) / (np.amax(new_phantom) - np.amin(new_phantom))
+            noise_vec = self.rng.standard_normal(new_phantom.shape) * scaled_phantom * 50
+            new_phantom = new_phantom + noise_vec
         self.complete = np.stack((new_phantom * self.baseline[0]/self.baseline[1], new_phantom), axis = 0)   
         self.voxel_dims = np.array(target_voxel_size)
         self.matrix_dims = np.array(new_phantom.shape)
@@ -336,10 +341,12 @@ class Phantom:
             final_mask = interp(list(global_indices)).reshape(matrix_size)
             final = self.make_complete(mask=final_mask, voxel_size=voxel_size)
         else:
-            interp_sos = NearestNDInterpolator((x,y,z), self.get_complete()[0])
-            interp_density = NearestNDInterpolator((x,y,z), self.get_complete()[1])
-            final_sos = interp_sos(global_indices).reshape((2,) + matrix_size)
-            final_density = interp_density(global_indices).reshape((2,) + matrix_size)
+            interp_sos = NearestNDInterpolator(xyz, self.get_complete()[0].flatten())
+            interp_density = NearestNDInterpolator(xyz, self.get_complete()[1].flatten())
+            # interp_sos = NearestNDInterpolator((x,y,z), self.get_complete()[0])
+            # interp_density = NearestNDInterpolator((x,y,z), self.get_complete()[1])
+            final_sos = interp_sos(global_indices).reshape(matrix_size)
+            final_density = interp_density(global_indices).reshape(matrix_size)
             final = np.stack((final_sos, final_density), axis=0)
                         
         return final
