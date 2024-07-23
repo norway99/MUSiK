@@ -1,9 +1,8 @@
 import numpy as np
 import sys
-sys.path.append('../')
 
-import utils
-import geometry
+from utils import utils
+from utils import geometry
 from transducer import Focused, Planewave, Transducer
 
 import matplotlib.pyplot as plt

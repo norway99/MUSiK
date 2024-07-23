@@ -17,11 +17,9 @@ from transducer import Transducer, Focused, Planewave
 from transducer_set import TransducerSet
 
 import sys
-sys.path.append('../utils')
-import utils
-import geometry
+from utils import utils
+from utils import geometry
 
-sys.path.append('../k-wave-python')
 import kwave
 import kwave.kmedium
 import kwave.options.simulation_options

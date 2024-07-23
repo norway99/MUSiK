@@ -2,10 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import sys
-sys.path.append('../utils')
-
-import geometry
-import utils
+from utils import utils
+from utils import geometry
 from transducer import Transducer, Focused, Planewave
 
 

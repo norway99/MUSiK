@@ -1,18 +1,6 @@
 import sys
 import argparse
-
-sys.path.append('./utils')
-sys.path.append('./core')
-sys.path.append('./')
-
-sys.path.append('../utils')
-sys.path.append('../core')
-sys.path.append('../')
-
-import utils
-import geometry
 from experiment import Experiment
-
 
 def main():
     parser = argparse.ArgumentParser()

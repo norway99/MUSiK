@@ -9,11 +9,10 @@ import multiprocessing
 from scipy import interpolate
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 from scipy.ndimage import gaussian_filter1d
-sys.path.append('../utils')
 import time
 
-import utils
-import geometry
+from utils import utils
+from utils import geometry
 from transducer import Focused, Planewave, Transducer
 from phantom import Phantom
 from transducer_set import TransducerSet

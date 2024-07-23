@@ -1,12 +1,9 @@
 import numpy as np
 import sys
-sys.path.append('../utils')
-import geometry
+from utils import utils
+from utils import geometry
 import matplotlib.pyplot as plt
-import utils
 
-sys.path.append('../k-wave-python')
-sys.path.append('./k-wave-python')
 import kwave
 import kwave.ktransducer
 from scipy.signal import hilbert

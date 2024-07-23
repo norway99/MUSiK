@@ -8,10 +8,9 @@ import functools
 import time
 import tqdm
 import sys
-sys.path.append('../utils')
 
-import utils
-import geometry
+from utils import utils
+from utils import geometry
 from phantom import Phantom
 from transducer_set import TransducerSet
 from simulation import Simulation, SimProperties
