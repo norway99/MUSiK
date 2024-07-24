@@ -211,6 +211,7 @@ class Phantom:
         for tissue, file in zip(tissue_list, file_list):
             self.add_tissue(tissue, mask=phantom_builder.voxelize(voxel_size, mesh_file=file, min_bounds=min_bound, max_bounds=max_bound, grid_shape=self.matrix_dims))
             print(f"Added {tissue.name}")
+        self.matrix_dims = np.array(self.mask.shape)
        
     # add tissue
     def add_tissue(self, tissue, mask=None):
@@ -230,10 +231,15 @@ class Phantom:
             
             
     def set_default_tissue(self, name):
-        if name in self.tissues.keys():
-            self.default_tissue = self.tissues[name].label
+        if type(name) == str:
+            if name in self.tissues.keys():
+                self.default_tissue = self.tissues[name].label
+        elif hasattr(name, 'label'):
+            self.add_tissue(name)
+            self.default_tissue = name.label
         else:
             print('tissue not found')
+        self.mask = np.where(self.mask == 0, self.default_tissue, self.mask)
         
         
     def add_tissue_sphere(self, centroid, radius, tissue):
@@ -306,7 +312,7 @@ class Phantom:
     
     
     def make_complete(self, mask, voxel_size): # edit this and generate_tissue, include the matrix size and the voxel size in the argument - very important
-        complete = np.zeros(mask.shape, dtype = np.float16)
+        complete = np.zeros(mask.shape, dtype=np.float16)
         for key in self.tissues.keys():
             complete = np.where(mask == self.tissues[key].label, self.generate_tissue(self.tissues[key], mask.shape, voxel_size), complete)
         return complete

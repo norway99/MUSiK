@@ -84,7 +84,7 @@ class Experiment:
         self.nodes = nodes
         self.gpu = gpu
         if workers is not None and workers > 3:
-            print('workers specifies the number of simultaneous simulations running on a single gpu node, setting workers higher than 3 will likely use more RAM without decreasing overall runtime')
+            print('workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime')
         self.workers = workers
 
         os.makedirs(os.path.join(simulation_path, f'results'), exist_ok=True)
@@ -161,9 +161,7 @@ class Experiment:
     
     # subdivide
     def subdivide(self, indices=None, repeat=False):
-        if indices is None and not repeat:
-            indices = self.indices
-        elif indices is None and repeat:
+        if indices is None:
             indices = self.indices_to_run(indices, repeat=repeat)
         if len(indices) == 0:
             return None

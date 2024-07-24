@@ -1,6 +1,11 @@
 import sys
 import argparse
-from experiment import Experiment
+
+parent = os.path.dirname(os.path.realpath('./'))
+sys.path.append(parent)
+from core import *
+from utils import phantom_builder
+from utils import geometry
 
 def main():
     parser = argparse.ArgumentParser()
@@ -13,14 +18,14 @@ def main():
     
     args = parser.parse_args()
     
-    experiment = Experiment.load(args.path)
+    test_experiment = experiment.Experiment.load(args.path)
     
-    experiment.nodes = args.nodes
-    experiment.gpu = args.gpu
+    test_experiment.nodes = args.nodes
+    test_experiment.gpu = args.gpu
     experiment.workers = args.workers
     if not args.repeat:
-        experiment.indices = experiment.indices_to_run()
-    experiment.run(args.node)
+        test_experiment.indices = test_experiment.indices_to_run()
+    test_experiment.run(args.node)
     
 if __name__ == "__main__":
     sys.exit(main())

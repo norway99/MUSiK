@@ -323,7 +323,8 @@ class Transducer:
         if transform is not None:
             transformed_coords = transform.apply_to_points(points) * length
             centroid = transform.apply_to_points(np.zeros_like(transformed_coords))
-                        
+            
+            ax.scatter(centroid[:,0], centroid[:,1], centroid[:,2], color = color)
             ax.quiver(centroid[:,0], centroid[:,1], centroid[:,2], 
                       transformed_coords[:,0], transformed_coords[:,1], transformed_coords[:,2], 
                       length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
