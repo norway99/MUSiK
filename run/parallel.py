@@ -6,7 +6,6 @@ parent = os.path.dirname(os.path.realpath('.'))
 sys.path.append(parent)
 
 from core import *
-from utils import phantom_builder
 from utils import geometry
 
 def main():
