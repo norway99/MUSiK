@@ -85,6 +85,11 @@ class Experiment:
         self.gpu = gpu
         if workers is not None and workers > 3:
             print('workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime')
+            slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
+            if slurm_cpus:
+                num_cpus = int(slurm_cpus)
+                if num_cpus < workers:
+                    workers = num_cpus
         self.workers = workers
 
         os.makedirs(os.path.join(simulation_path, f'results'), exist_ok=True)
@@ -187,11 +192,6 @@ class Experiment:
                     self.run(node, dry=dry, repeat=repeat)
         else:
             if dry:
-                # if self.workers is None:
-                #     print('dry run of simulation')
-                #     for index in tqdm.tqdm(indices):
-                #         self.simulate(index, dry=dry)
-                # else:
                 print('dry run of simulation')
                 index = 0
                 for transducer in tqdm.tqdm(self.transducer_set.transducers):
