@@ -87,6 +87,7 @@ class Experiment:
             print('workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime')
             slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
             if slurm_cpus:
+                print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
                 num_cpus = int(slurm_cpus)
                 if num_cpus < workers:
                     workers = num_cpus
@@ -301,6 +302,28 @@ class Experiment:
                                 global_mask[tuple(index)]*255,
                                 global_mask[tuple(index)]*255,
                                 global_mask[tuple(index)]*255), axis=-1))
+        
+        
+    def get_sensor_mask(self, pad=0):
+        if pad == 0:
+            mask_shape = self.phantom.mask.shape
+        else:
+            mask_shape = (self.phantom.mask.shape[0] + pad, self.phantom.mask.shape[1] + pad, self.phantom.mask.shape[2] + pad)
+        global_mask = np.zeros(mask_shape)
+        sensor_voxels = np.divide(self.sensor.sensor_coords, self.phantom.voxel_dims)
+        phantom_centroid = np.array(mask_shape)//2 
+        recenter_matrix = np.broadcast_to(phantom_centroid, sensor_voxels.shape)
+        sensor_voxels = sensor_voxels + recenter_matrix
+        sensor_voxels_disc = np.ndarray.astype(np.round(sensor_voxels), int)
+
+        for voxel in sensor_voxels_disc:
+            if np.prod(np.where(voxel >= 0, 1, 0)) == 0: 
+                continue
+            if np.prod(np.where(voxel < global_mask.shape, 1, 0)) == 0:
+                continue
+            global_mask[voxel[0], voxel[1], voxel[2]] = 1
+        
+        return global_mask
 
         
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
