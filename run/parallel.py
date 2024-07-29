@@ -26,12 +26,7 @@ def main():
     slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
     if slurm_cpus is not None:
         print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
-        num_cpus = int(slurm_cpus)
-        print(f'num_cpus {num_cpus}')
-        print(f'args.workers {args.workers}')
-        if num_cpus < args.workers:
-            print(f'reducing workers from {args.workers} to {num_cpus}')
-            test_experiment.workers = num_cpus
+        test_experiment.workers = int(slurm_cpus)
     else:
         test_experiment.workers = args.workers
     if not args.repeat:
