@@ -23,6 +23,7 @@ def main():
     
     test_experiment.nodes = args.nodes
     test_experiment.gpu = args.gpu
+    slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
     if slurm_cpus:
         print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
         num_cpus = int(slurm_cpus)
