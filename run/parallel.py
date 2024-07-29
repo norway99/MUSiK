@@ -27,9 +27,8 @@ def main():
     if slurm_cpus:
         print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
         num_cpus = int(slurm_cpus)
-        if num_cpus < workers:
-            workers = num_cpus
-        experiment.workers = workers
+        if num_cpus < args.workers:
+            experiment.workers = num_cpus
     else:
         experiment.workers = args.workers
     if not args.repeat:
