@@ -23,7 +23,14 @@ def main():
     
     test_experiment.nodes = args.nodes
     test_experiment.gpu = args.gpu
-    experiment.workers = args.workers
+    if slurm_cpus:
+        print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
+        num_cpus = int(slurm_cpus)
+        if num_cpus < workers:
+            workers = num_cpus
+        experiment.workers = workers
+    else:
+        experiment.workers = args.workers
     if not args.repeat:
         test_experiment.indices = test_experiment.indices_to_run()
     test_experiment.run(args.node)
