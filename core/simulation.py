@@ -236,7 +236,7 @@ class Simulation:
             time_array, signals, other_signals = self.__run_simulation(self.prepped_simulation, self.additional_keys)
             self.__write_signal(index, signals, time_array)
             self.__write_other_signals(index, other_signals)
-            print('simulation          {:4d} completed in {:5.2f} seconds'.format(index, round(time.time() - start_time, 3)))
+            print('simulation          {:4d} completed in {:5.2f} seconds'.format(index, round(time.time() - start_time, 3)), flush=True)
             return signals, time_array
     
     

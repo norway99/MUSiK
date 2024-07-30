@@ -556,7 +556,8 @@ class Compounding(Reconstruction):
                 
         if isinstance(transducer, Planewave):
             steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
-            t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
+            # t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
+            t_start = 0
         else:
             steering_transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
             t_start = 0
