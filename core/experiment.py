@@ -4,6 +4,7 @@ import os
 import glob
 import re
 import multiprocessing
+from queue import Empty
 import functools
 import time
 import tqdm
@@ -18,6 +19,7 @@ from sensor import Sensor
 
 from matplotlib import pyplot as plt
 
+SENTINEL = 'sentinel'
 
 class Results:
     
@@ -214,24 +216,26 @@ class Experiment:
                             simulations = np.array_split(subdivisions[node], self.workers - 1)
                             prep_procs = []
                             for i in range(self.workers - 1):
-                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry)))
+                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry, self.workers - 1)))
                                 prep_procs[i].start()
+                                time.sleep(10)
                         else:
                             prep_procs = [multiprocessing.Process(name='prep', target=self.prep_worker, args=(queue, subdivisions[node], dry)),]
                             prep_procs[0].start()
                             
-                        run_proc = multiprocessing.Process(name='run', target=self.run_worker, args=(queue, subdivisions[node],))
+                        run_proc = multiprocessing.Process(name='run', target=self.run_worker, args=(queue, subdivisions[node], len(prep_procs)))
                         run_proc.start()
                         
                         for prep_proc in prep_procs:
                             prep_proc.join()
                         run_proc.join()
+                        print(f'successfully joined {len(prep_procs)} preparation processes and 1 run process')
     
                 
-    def prep_worker(self, queue, indices, dry=False):
+    def prep_worker(self, queue, indices, dry=False, num_prep_workers=1):
         count = 0
         while True:
-            if queue.qsize() > 3:
+            if queue.qsize() >= num_prep_workers:
                 time.sleep(5)
                 continue
             simulation = Simulation(self.sim_properties, 
@@ -248,19 +252,28 @@ class Experiment:
             count += 1
             if count == len(indices):
                 break
+        queue.put(SENTINEL)
+            
     
-    
-    def run_worker(self, queue, indices):
+    def run_worker(self, queue, indices, num_prep_workers):
+        seen_sentinel_count = 0
         count = 0
         while True:
-            if queue.qsize() == 0:
+            try:
+                simulation = queue.get(False)
+            except Empty:
                 time.sleep(1)
                 continue
-            simulation = queue.get()
-            simulation.run()
-            count += 1
-            if count == len(indices):
-                break
+            if simulation == SENTINEL:
+                seen_sentinel_count += 1
+            else:
+                simulation.run()
+                count += 1
+            if seen_sentinel_count == num_prep_workers:
+                if count == len(indices):
+                    break
+                else:
+                    assert False, f'counting all {seen_sentinel_count} prep_workers finished but only {count}/{len(indices)} indices matched'
         
                     
     def simulate(self, index, dry=False):

@@ -172,6 +172,7 @@ class Phantom:
         self.complete = np.stack((new_phantom * self.baseline[0]/self.baseline[1], new_phantom), axis = 0)   
         self.voxel_dims = np.array(target_voxel_size)
         self.matrix_dims = np.array(new_phantom.shape)
+        self.mask = np.zeros(self.matrix_dims)
         self.from_mask = False
         self.tissues = {}
         

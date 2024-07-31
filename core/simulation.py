@@ -218,7 +218,7 @@ class Simulation:
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
-                    print('preparation for sim {:4d} completed in {:5.2f} seconds'.format(self.index, round(time.time() - start_time, 3)))
+                    print('preparation for sim {:4d} completed in {:5.2f} seconds'.format(self.index, round(time.time() - start_time, 3)), flush=True)
                     return prepped
                 else:
                     affine = geometry.Transform()
