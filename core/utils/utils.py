@@ -55,7 +55,7 @@ def load_array(filepath):
         return None
 
 def save_mrc(array, filepath):
-    # array = np.flip(array, axis=0)
+    array = np.where(np.isnan(array), 0, array)
     with mrcfile.new(filepath, overwrite=True) as mrc:
         mrc.set_data(array.astype(np.float32))
 
