@@ -339,7 +339,7 @@ class Compounding(Reconstruction):
         x = np.arange(-matrix_dims[0]*voxel_dims[0]/2 + voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2 + voxel_dims[0]/2, step=resolution)
         y = np.arange(-matrix_dims[1]*voxel_dims[1]/2 + voxel_dims[1]/2, matrix_dims[1]*voxel_dims[1]/2 + voxel_dims[1]/2, step=resolution)
         z = np.arange(-matrix_dims[2]*voxel_dims[2]/2 + voxel_dims[2]/2, matrix_dims[2]*voxel_dims[2]/2 + voxel_dims[2]/2, step=resolution)
-                
+        
         image_matrix = np.zeros((len(x), len(y), len(z)))
         
         # note that origin is at center of the 3d image in global coordinate system
@@ -364,7 +364,6 @@ class Compounding(Reconstruction):
             if not local:
                 image_matrices = list(p.starmap(self.scanline_reconstruction, arguments))
             else:
-                # image_matrices = list(p.starmap(self.scanline_reconstruction_local, arguments))
                 image_matrices = list(p.starmap(self.scanline_reconstruction_refined, arguments))
 
         if combine:
@@ -373,170 +372,164 @@ class Compounding(Reconstruction):
             return image_matrices
         
     
-    def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field=None):
+    # def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field=None):
         
-        if index > running_index_list[transducer_count] - 1:
-            transducer_count += 1
-            transducer, transducer_transform = self.transducer_set[transducer_count]
+    #     if index > running_index_list[transducer_count] - 1:
+    #         transducer_count += 1
+    #         transducer, transducer_transform = self.transducer_set[transducer_count]
         
-        steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
+    #     steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
-        dt = (self.results[index][0][-1] - self.results[index][0][0]) / (self.results[index][0].shape[0]-1)
-        preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
+    #     dt = (self.results[index][0][-1] - self.results[index][0][0]) / (self.results[index][0].shape[0]-1)
+    #     preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8)
         
-        t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
+    #     t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
         
-        if len(preprocessed_data.shape) == 2:
-            preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
+    #     if len(preprocessed_data.shape) == 2:
+    #         preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
                             
-        transmit_position = transducer_transform.translation
+    #     transmit_position = transducer_transform.translation
 
-        if isinstance(transducer, Planewave):
-            transmit_rotation = transducer_transform.get()[:3, :3] # maybe inverse?
-            pw_rotation = np.array([[np.cos(steering_angle), -np.sin(steering_angle), 0], [np.sin(steering_angle), np.cos(steering_angle), 0], [0, 0, 1]]) # I'm sure there's a possible maybe here?
-            # rotation = np.matmul(pw_rotation, transmit_rotation) # maybe switch direction?
-            rotation = np.matmul(transmit_rotation, pw_rotation)
-            normal = np.matmul(rotation, np.array([1, 0, 0])) 
-        else:
-            transmit_rotation = transducer_transform.rotation.as_euler('ZYX')
-            nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
-            normal = nl_transform.apply_to_point((1, 0, 0)) # do we need this for the focused case?????
+    #     if isinstance(transducer, Planewave):
+    #         transmit_rotation = transducer_transform.get()[:3, :3] # maybe inverse?
+    #         pw_rotation = np.array([[np.cos(steering_angle), -np.sin(steering_angle), 0], [np.sin(steering_angle), np.cos(steering_angle), 0], [0, 0, 1]]) # I'm sure there's a possible maybe here?
+    #         # rotation = np.matmul(pw_rotation, transmit_rotation) # maybe switch direction?
+    #         rotation = np.matmul(transmit_rotation, pw_rotation)
+    #         normal = np.matmul(rotation, np.array([1, 0, 0])) 
+    #     else:
+    #         transmit_rotation = transducer_transform.rotation.as_euler('ZYX')
+    #         nl_transform = geometry.Transform(rotation = transmit_rotation) * transducer.ray_transforms[index - running_index_list[transducer_count]]
+    #         normal = nl_transform.apply_to_point((1, 0, 0)) # do we need this for the focused case?????
             
-        xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2], indexing='ij')
-        distances = np.stack([xxx, yyy, zzz], axis=0)
+    #     xxx, yyy, zzz = np.meshgrid(x - transmit_position[0], y - transmit_position[1], z - transmit_position[2], indexing='ij')
+    #     distances = np.stack([xxx, yyy, zzz], axis=0)
         
-        transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
-        image_matrix = np.zeros((len(x), len(y), len(z)))
+    #     transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances, normal))
+    #     image_matrix = np.zeros((len(x), len(y), len(z)))
         
-        for centroid, rf_series in zip(element_centroids, preprocessed_data): # don't need to include zzz in this calculation
-            xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2], indexing='ij')
-            element_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
-            travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
+    #     for centroid, rf_series in zip(element_centroids, preprocessed_data): # don't need to include zzz in this calculation
+    #         xxx, yyy, zzz = np.meshgrid(x - centroid[0], y - centroid[1], z - centroid[2], indexing='ij')
+    #         element_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
+    #         travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
             
-            image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]
-        return image_matrix
+    #         image_matrix[:len(x), :len(y), :len(z)] += rf_series[travel_times[:len(x), :len(y), :len(z)]]
+    #     return image_matrix
     
-    def scanline_reconstruction_local(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field=None):
+    # def scanline_reconstruction_local(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field=None):
         
-        if index > running_index_list[transducer_count] - 1:
-            transducer_count += 1
-            transducer, transducer_transform = self.transducer_set[transducer_count]
+    #     if index > running_index_list[transducer_count] - 1:
+    #         transducer_count += 1
+    #         transducer, transducer_transform = self.transducer_set[transducer_count]
         
-        steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
+    #     steering_angle = transducer.steering_angles[index - running_index_list[transducer_count]]
 
-        dt = (self.results[index][0][-1] - self.results[index][0][0]) / (self.results[index][0].shape[0]-1)
-        preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8, saft=True)
+    #     dt = (self.results[index][0][-1] - self.results[index][0][0]) / (self.results[index][0].shape[0]-1)
+    #     preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8, saft=True)
         
-        if len(preprocessed_data.shape) == 2:
-            preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
+    #     if len(preprocessed_data.shape) == 2:
+    #         preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
         
-        transmit_position = np.array([0, 0, 0])
+    #     transmit_position = np.array([0, 0, 0])
         
-        if isinstance(transducer, Planewave):
-            steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
-            t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
-        else:
-            steering_transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
-            t_start = 0
+    #     if isinstance(transducer, Planewave):
+    #         steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
+    #         t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
+    #     else:
+    #         steering_transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
+    #         t_start = 0
 
-        beam_transform = transducer_transform * steering_transform
+    #     beam_transform = transducer_transform * steering_transform
         
-        global_bounds = np.array([[np.min(x), np.max(x)], [np.min(y), np.max(y)],[np.min(z), np.max(z)]])
-        xs, ys, zs = np.meshgrid(global_bounds[0], global_bounds[1], global_bounds[2], indexing='ij')
-        global_vertices = np.stack((xs.flatten(), ys.flatten(), zs.flatten()), axis=-1)
-        local_vertices = beam_transform.apply_to_points(global_vertices, inverse=True)
+    #     global_bounds = np.array([[np.min(x), np.max(x)], [np.min(y), np.max(y)],[np.min(z), np.max(z)]])
+    #     xs, ys, zs = np.meshgrid(global_bounds[0], global_bounds[1], global_bounds[2], indexing='ij')
+    #     global_vertices = np.stack((xs.flatten(), ys.flatten(), zs.flatten()), axis=-1)
+    #     local_vertices = beam_transform.apply_to_points(global_vertices, inverse=True)
         
-        local_mins = np.min(local_vertices, axis=0)
-        local_maxs = np.max(local_vertices, axis=0)
-        local_x = np.arange(local_mins[0], local_maxs[0]+resolution, step=resolution)
-        local_y = np.arange(local_mins[1], local_maxs[1]+resolution, step=resolution)
-        local_z = np.arange(local_mins[2], local_maxs[2]+resolution, step=resolution)
-        xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
+    #     local_mins = np.min(local_vertices, axis=0)
+    #     local_maxs = np.max(local_vertices, axis=0)
+    #     local_x = np.arange(local_mins[0], local_maxs[0]+resolution, step=resolution)
+    #     local_y = np.arange(local_mins[1], local_maxs[1]+resolution, step=resolution)
+    #     local_z = np.arange(local_mins[2], local_maxs[2]+resolution, step=resolution)
+    #     xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
 
-        if isinstance(transducer, Focused): 
-            assert self.sensor.aperture_type == "extended_aperture", "For focused transducers, the sensor aperture type must be 'extended_aperture'"
-            sensor_coords = transducer.sensor_coords
-            sensors_per_el = transducer.get_sensors_per_el()
-            transmit_centroids = np.zeros((transducer.get_num_elements(), 3))
-            pos = 0
-            for entry in range(transducer.get_num_elements()):
-                transmit_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+sensors_per_el, :], axis = 0)
-                pos += sensors_per_el
-            element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
-            label = transducer.get_label()
-            index = self.transducer_set.find_transducer(label)
-            start_element = 0
-            for t in self.transducer_set.transducers[:index]:
-                start_element += t.get_num_elements()
-            element_centroids[start_element:transducer.get_num_elements(), :] = transmit_centroids
-            transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
-            # timedelays = np.round(((np.linalg.norm(transmit_centroids - np.array(((transducer.focus_azimuth,0,0))), axis=1)) - transducer.focus_azimuth) / c0 / dt).astype(np.int32)
-            # timedelays = transducer.not_transducer.beamforming_delays
-        else:
-            sensor_coords = transducer.sensor_coords
-            sensors_per_el = transducer.get_sensors_per_el()
-            if self.sensor.aperture_type == "transmit_as_receive":
-                # transmit_centroids = np.zeros((len(transducer.not_transducer.active_elements), 3))
-                pos = 0
+    #     if isinstance(transducer, Focused): 
+    #         assert self.sensor.aperture_type == "extended_aperture", "For focused transducers, the sensor aperture type must be 'extended_aperture'"
+    #         sensor_coords = transducer.sensor_coords
+    #         sensors_per_el = transducer.get_sensors_per_el()
+    #         transmit_centroids = np.zeros((transducer.get_num_elements(), 3))
+    #         pos = 0
+    #         for entry in range(transducer.get_num_elements()):
+    #             transmit_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+sensors_per_el, :], axis = 0)
+    #             pos += sensors_per_el
+    #         element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
+    #         label = transducer.get_label()
+    #         index = self.transducer_set.find_transducer(label)
+    #         start_element = 0
+    #         for t in self.transducer_set.transducers[:index]:
+    #             start_element += t.get_num_elements()
+    #         element_centroids[start_element:transducer.get_num_elements(), :] = transmit_centroids
+    #         transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
+    #         # timedelays = np.round(((np.linalg.norm(transmit_centroids - np.array(((transducer.focus_azimuth,0,0))), axis=1)) - transducer.focus_azimuth) / c0 / dt).astype(np.int32)
+    #         # timedelays = transducer.not_transducer.beamforming_delays
+    #     else:
+    #         sensor_coords = transducer.sensor_coords
+    #         sensors_per_el = transducer.get_sensors_per_el()
+    #         if self.sensor.aperture_type == "transmit_as_receive":
+    #             # transmit_centroids = np.zeros((len(transducer.not_transducer.active_elements), 3))
+    #             pos = 0
 
-                transducer_transmit_element_coordinates_local = np.linspace(-transducer.not_transducer.transducer.element_pitch * len(transducer.not_transducer.active_elements) / 2,
-                                                                            transducer.not_transducer.transducer.element_pitch * len(transducer.not_transducer.active_elements) / 2,
-                                                                            len(transducer.not_transducer.active_elements))
+    #             transducer_transmit_element_coordinates_local = np.linspace(-transducer.not_transducer.transducer.element_pitch * len(transducer.not_transducer.active_elements) / 2,
+    #                                                                         transducer.not_transducer.transducer.element_pitch * len(transducer.not_transducer.active_elements) / 2,
+    #                                                                         len(transducer.not_transducer.active_elements))
                 
-                transducer_transmit_element_coordinates_local = np.stack((np.zeros_like(transducer_transmit_element_coordinates_local), transducer_transmit_element_coordinates_local, np.zeros_like(transducer_transmit_element_coordinates_local)), axis=1)
-                transmit_centroids = transducer_transmit_element_coordinates_local
-                element_centroids = steering_transform.apply_to_points(transmit_centroids, inverse=True)
-            else:
-                element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
-            distances = np.stack([xxx, yyy, zzz], axis=0)
-            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances,  np.array((1,0,0))))
-            # timedelays = transducer.not_transducer.beamforming_delays
+    #             transducer_transmit_element_coordinates_local = np.stack((np.zeros_like(transducer_transmit_element_coordinates_local), transducer_transmit_element_coordinates_local, np.zeros_like(transducer_transmit_element_coordinates_local)), axis=1)
+    #             transmit_centroids = transducer_transmit_element_coordinates_local
+    #             element_centroids = steering_transform.apply_to_points(transmit_centroids, inverse=True)
+    #         else:
+    #             element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
+    #         distances = np.stack([xxx, yyy, zzz], axis=0)
+    #         transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances,  np.array((1,0,0))))
+    #         # timedelays = transducer.not_transducer.beamforming_delays
 
-        # local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)))
-        local_image_matrix = np.ones((len(local_x), len(local_y), len(local_z)))
+    #     # local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)))
+    #     local_image_matrix = np.ones((len(local_x), len(local_y), len(local_z)))
         
-        if pressure_field is not None:
-            vox_size = (self.phantom.baseline[0]/transducer.get_freq())/4
-            normalized_pfield = pressure_field/np.sum(pressure_field)
-            pfield_xs = np.arange(0, normalized_pfield.shape[0]*vox_size, step=vox_size)
-            pfield_ys = np.arange(-normalized_pfield.shape[1]/2*vox_size+vox_size/2, normalized_pfield.shape[1]/2*vox_size+vox_size/2, step=vox_size)
-            f = interpolate.interp2d(pfield_ys, pfield_xs, normalized_pfield, kind='linear', fill_value=0)
-            apodizations = np.repeat(f(local_y, local_x,), len(local_z)).reshape(len(local_x), len(local_y), len(local_z))
-        else:
-            apodizations = np.ones((len(local_x), len(local_y), len(local_z)))
+    #     if pressure_field is not None:
+    #         vox_size = (self.phantom.baseline[0]/transducer.get_freq())/4
+    #         normalized_pfield = pressure_field/np.sum(pressure_field)
+    #         pfield_xs = np.arange(0, normalized_pfield.shape[0]*vox_size, step=vox_size)
+    #         pfield_ys = np.arange(-normalized_pfield.shape[1]/2*vox_size+vox_size/2, normalized_pfield.shape[1]/2*vox_size+vox_size/2, step=vox_size)
+    #         f = interpolate.interp2d(pfield_ys, pfield_xs, normalized_pfield, kind='linear', fill_value=0)
+    #         apodizations = np.repeat(f(local_y, local_x,), len(local_z)).reshape(len(local_x), len(local_y), len(local_z))
+    #     else:
+    #         apodizations = np.ones((len(local_x), len(local_y), len(local_z)))
 
-        for centroid, rf_series in zip(element_centroids, preprocessed_data):
-            lx, ly, lz = np.meshgrid(local_x - centroid[0], local_y - centroid[1], local_z - centroid[2], indexing='ij')
-            element_dists = np.sqrt(lx**2 + ly**2 + lz**2)
-            travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
-            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
+    #     for centroid, rf_series in zip(element_centroids, preprocessed_data):
+    #         lx, ly, lz = np.meshgrid(local_x - centroid[0], local_y - centroid[1], local_z - centroid[2], indexing='ij')
+    #         element_dists = np.sqrt(lx**2 + ly**2 + lz**2)
+    #         travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
+    #         local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
             
-            # At some point, test reconstruction with multiplication here, requires normalization
-            # normalized = rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
-            # normalized = normalized / np.sum(rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]) / dt
-            # local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] *= normalized
+    #         # At some point, test reconstruction with multiplication here, requires normalization
+    #         # normalized = rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
+    #         # normalized = normalized / np.sum(rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]) / dt
+    #         # local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] *= normalized
 
-        local_image_matrix = np.abs(hilbert(local_image_matrix, axis = 0))
-        # return local_image_matrix
+    #     local_image_matrix = np.abs(hilbert(local_image_matrix, axis = 0))
+    #     # return local_image_matrix
         
-        flat = local_image_matrix.flatten()
-        local_coords = np.stack((xxx.flatten(), yyy.flatten(), zzz.flatten()), axis=-1)
-        local_2_global = beam_transform.apply_to_points(local_coords)
-        interpolator = NearestNDInterpolator(local_2_global, flat)
+    #     flat = local_image_matrix.flatten()
+    #     local_coords = np.stack((xxx.flatten(), yyy.flatten(), zzz.flatten()), axis=-1)
+    #     local_2_global = beam_transform.apply_to_points(local_coords)
+    #     interpolator = NearestNDInterpolator(local_2_global, flat)
         
-        gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
-        global_signal = interpolator(gx,gy,gz).reshape(len(x), len(y), len(z))
+    #     gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
+    #     global_signal = interpolator(gx,gy,gz).reshape(len(x), len(y), len(z))
                 
-        return global_signal
+    #     return global_signal
     
     
-    
-    
-    
-    
-    
-    
-    def scanline_reconstruction_refined(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field=None,):
+    def scanline_reconstruction_refined(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field=None):
         # fetch steering angle
         if index > running_index_list[transducer_count] - 1:
             transducer_count += 1
@@ -552,7 +545,6 @@ class Compounding(Reconstruction):
         # pad the timesignal if duration < long diagonal
         if len(preprocessed_data.shape) == 2:
             preprocessed_data = np.pad(preprocessed_data, ((0,0),(0,int(preprocessed_data.shape[1]*1.73))),)
-        
                 
         if isinstance(transducer, Planewave):
             steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
@@ -574,7 +566,7 @@ class Compounding(Reconstruction):
         local_x = np.arange(local_mins[0], local_maxs[0]+resolution, step=resolution)
         local_y = np.arange(local_mins[1], local_maxs[1]+resolution, step=resolution)
         # local_z = np.arange(local_mins[2], local_maxs[2]+resolution, step=resolution)
-        local_z = np.array([(local_mins[2] + local_maxs[2]) / 2])
+        local_z = np.array([0])
         xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
 
         if isinstance(transducer, Focused): 

@@ -233,29 +233,39 @@ class Experiment:
     
                 
     def prep_worker(self, queue, indices, dry=False, num_prep_workers=1):
+        start = time.time()
         count = 0
         while True:
             if queue.qsize() >= num_prep_workers:
                 time.sleep(5)
+                if time.time() - start > 300:
+                    print(f'prep worker has been inactive for {(time.time() - start)//60} minutes')
+                    start = time.time()
                 continue
+            try:
+                index = indices[count]
+            except:
+                break
             simulation = Simulation(self.sim_properties, 
                                     self.phantom, 
                                     self.transducer_set, 
                                     self.sensor, 
                                     simulation_path=self.simulation_path, 
-                                    index=indices[count], 
+                                    index=index, 
                                     gpu=self.gpu, 
                                     dry=dry, 
                                     additional_keys=self.additional_keys)
             simulation.prep()
             queue.put(simulation)
             count += 1
+            start = time.time()
             if count == len(indices):
                 break
         queue.put(SENTINEL)
             
     
     def run_worker(self, queue, indices, num_prep_workers):
+        start = time.time()
         seen_sentinel_count = 0
         count = 0
         while True:
@@ -263,12 +273,15 @@ class Experiment:
                 simulation = queue.get(False)
             except Empty:
                 time.sleep(1)
+                if time.time() - start > 300:
+                    print(f'prep worker has been inactive for {(time.time() - start)//60} minutes')
                 continue
             if simulation == SENTINEL:
                 seen_sentinel_count += 1
             else:
                 simulation.run()
                 count += 1
+                start = time.time()
             if seen_sentinel_count == num_prep_workers:
                 if count == len(indices):
                     break
