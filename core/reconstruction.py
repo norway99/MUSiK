@@ -125,7 +125,7 @@ class DAS(Reconstruction):
         
         
         if workers > 1:
-            with multiprocessing.Pool(8) as p:
+            with multiprocessing.Pool(workers) as p:
                 results = p.starmap(self.process_line, tqdm.tqdm(inputs, total=len(indices)))
         else:
             for input_data in inputs:
