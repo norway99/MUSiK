@@ -85,6 +85,7 @@ class Experiment:
         self.sensor = sensor
         self.nodes = nodes
         self.gpu = gpu
+        self.repeat = None
         if workers is not None and workers > 3:
             print('workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime')
             slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
@@ -93,6 +94,7 @@ class Experiment:
                 num_cpus = int(slurm_cpus)
                 if num_cpus < workers:
                     workers = num_cpus
+                self.repeat = -1
         self.workers = workers
 
         os.makedirs(os.path.join(simulation_path, f'results'), exist_ok=True)
@@ -216,7 +218,7 @@ class Experiment:
                             simulations = np.array_split(subdivisions[node], self.workers - 1)
                             prep_procs = []
                             for i in range(self.workers - 1):
-                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry, self.workers - 1)))
+                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry, self.workers - 1, repeat)))
                                 prep_procs[i].start()
                                 time.sleep(10)
                         else:
@@ -232,7 +234,7 @@ class Experiment:
                         print(f'successfully joined {len(prep_procs)} preparation processes and 1 run process')
     
                 
-    def prep_worker(self, queue, indices, dry=False, num_prep_workers=1):
+    def prep_worker(self, queue, indices, dry=False, num_prep_workers=1, repeat=False):
         start = time.time()
         count = 0
         while True:
@@ -246,6 +248,11 @@ class Experiment:
                 index = indices[count]
             except:
                 break
+            if repeat == -1 or self.repeat == -1: # repeat == 2 means we are not repeating simulations, but assigning indices statically (e.g. for large batch jobs)
+                if os.path.exists(os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}')):
+                    print(f'simulation index {index} already exists, skipping')
+                    count += 1
+                    continue
             simulation = Simulation(self.sim_properties, 
                                     self.phantom, 
                                     self.transducer_set, 

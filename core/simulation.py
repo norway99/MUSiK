@@ -213,7 +213,7 @@ class Simulation:
                 sim_phantom = self.phantom.get_complete()
                 sim_sensor = self.sensor
                 
-                if not dry:                    
+                if not dry:
                     affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
@@ -224,7 +224,8 @@ class Simulation:
                     affine = geometry.Transform()
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = np.ones((2, self.sim_properties.matrix_size[0], self.sim_properties.matrix_size[1], self.sim_properties.matrix_size[2])) * np.array(self.phantom.baseline)[:,None,None,None]
-                    self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
+                    self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle, dry=True)
+                    return
             else:
                 index -= transducer.get_num_rays()
                 
@@ -241,7 +242,7 @@ class Simulation:
     
     
     # given the simulation properties, phantom, and transducer, create the simulation file for the cuda binary and run
-    def __prep_simulation(self, index, sim_phantom, sim_transducer, sim_sensor, affine, steering_angle):
+    def __prep_simulation(self, index, sim_phantom, sim_transducer, sim_sensor, affine, steering_angle, dry=False):
                 
         # setup kgrid object
         pml_size_points = kwave.data.Vector(self.sim_properties.PML_size)  # [grid points]
@@ -263,6 +264,9 @@ class Simulation:
         # fetch not_a_transducer object from transducer
         sim_transducer.make_pulse(kgrid.dt, c0, rho0)
         not_transducer = sim_transducer.make_notatransducer(kgrid, c0, steering_angle, self.sim_properties.PML_size)
+        
+        if dry:
+            return (None, None, None, None, None, None, None, None)
 
         # setup medium object
         medium = kwave.kmedium.kWaveMedium(

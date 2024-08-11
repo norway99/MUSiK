@@ -312,7 +312,7 @@ class Compounding(Reconstruction):
             pos += sensors_per_el[entry]
         return element_centroids
     
-    def compound(self, workers=8, resolution_multiplier=1, local=False, pressure_field=None, combine=True): # not just plane-wave compounding, also works for saft (extended aperture with focused transducers)
+    def compound(self, workers=8, resolution_multiplier=1, local=False, pressure_field=None, combine=True):
 
         if isinstance(self.transducer_set[0], Focused):
             # do nothing
@@ -635,3 +635,63 @@ class Compounding(Reconstruction):
         gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
         global_signal = interpolator(gx,gy,gz).reshape(len(x), len(y), len(z))
         return global_signal
+    
+    
+    
+    def selective_compound(self, transducers, workers=8, resolution_multiplier=1, local=False, pressure_field=None, combine=True):
+        # Performs signal compounding only over a given a list of transducer indices
+
+        if isinstance(self.transducer_set[0], Focused):
+            # do nothing
+            pass
+        else:
+            # still do nothing
+            pass
+
+        matrix_dims = self.phantom.matrix_dims
+        voxel_dims = self.phantom.voxel_dims
+        c0 = self.phantom.baseline[0]
+        # dt = self.kgrid.dt # not the correct way to access the kgrid
+        # ------------------------------------------------------------------------------------------------------------
+        # fix this sometime
+        dt = (self.results[0][0][-1] - self.results[0][0][0]) / self.results[0][0].shape[0]
+        # ------------------------------------------------------------------------------------------------------------
+                
+        resolution = max(dt*c0, 2*c0/self.transducer_set.get_lowest_frequency()) / 4 / resolution_multiplier # make sure this works
+        
+        x = np.arange(-matrix_dims[0]*voxel_dims[0]/2 + voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2 + voxel_dims[0]/2, step=resolution)
+        y = np.arange(-matrix_dims[1]*voxel_dims[1]/2 + voxel_dims[1]/2, matrix_dims[1]*voxel_dims[1]/2 + voxel_dims[1]/2, step=resolution)
+        z = np.arange(-matrix_dims[2]*voxel_dims[2]/2 + voxel_dims[2]/2, matrix_dims[2]*voxel_dims[2]/2 + voxel_dims[2]/2, step=resolution)
+        
+        image_matrix = np.zeros((len(x), len(y), len(z)))
+        
+        # note that origin is at center of the 3d image in global coordinate system
+
+        element_centroids = self.__get_element_centroids()
+
+        arguments = []
+
+        transducer_count = 0
+        transducer, transducer_transform = self.transducer_set[transducer_count]
+        running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
+
+        for index in tqdm.tqdm(range(len(self.results))):
+            if index > running_index_list[transducer_count] - 1:
+                transducer_count += 1
+                transducer, transducer_transform = self.transducer_set[transducer_count]
+            
+            if transducer_count not in transducers:
+                    continue
+            arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, pressure_field))
+        
+        print(f'running reconstruction on {len(arguments)} rays')
+        with multiprocessing.Pool(workers) as p:
+            if not local:
+                image_matrices = list(p.starmap(self.scanline_reconstruction, arguments))
+            else:
+                image_matrices = list(p.starmap(self.scanline_reconstruction_refined, arguments))
+
+        if combine:
+            return np.sum(np.stack(image_matrices, axis=0), axis=0)
+        else:
+            return image_matrices
