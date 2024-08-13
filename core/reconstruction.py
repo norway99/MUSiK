@@ -323,17 +323,13 @@ class Compounding(Reconstruction):
 
         matrix_dims = self.phantom.matrix_dims
         voxel_dims = self.phantom.voxel_dims
-        # matrix_dims = self.sim_properties.matrix_size
-        # voxel_dims = self.sim_properties.voxel_size
+        
+        print("Matrix Dims: ", matrix_dims)
+        print("Voxel Dims: ", voxel_dims)
+        
         c0 = self.phantom.baseline[0]
-        # dt = self.kgrid.dt # not the correct way to access the kgrid
-        # ------------------------------------------------------------------------------------------------------------
-        # fix this sometime
         dt = (self.results[0][0][-1] - self.results[0][0][0]) / self.results[0][0].shape[0]
-        # ------------------------------------------------------------------------------------------------------------
-        
-        # need to choose lateral, axial, and elevation resolutions
-        
+                
         resolution = max(dt*c0, 2*c0/self.transducer_set.get_lowest_frequency()) / 4 / resolution_multiplier # make sure this works
         
         x = np.arange(-matrix_dims[0]*voxel_dims[0]/2 + voxel_dims[0]/2, matrix_dims[0]*voxel_dims[0]/2 + voxel_dims[0]/2, step=resolution)
@@ -548,11 +544,8 @@ class Compounding(Reconstruction):
                 
         if isinstance(transducer, Planewave):
             steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
-            # t_start = transducer.width / 2 * np.abs(np.sin(steering_angle))
-            t_start = 0
         else:
             steering_transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
-            t_start = 0
 
         beam_transform = transducer_transform * steering_transform
         
@@ -593,6 +586,7 @@ class Compounding(Reconstruction):
                 transmit_centroids = np.linspace(-transducer.not_transducer.transducer.element_pitch * len(transducer.not_transducer.active_elements) / 2,
                                                                              transducer.not_transducer.transducer.element_pitch * len(transducer.not_transducer.active_elements) / 2,
                                                                              len(transducer.not_transducer.active_elements))
+                # Account for PML?
                 transmit_centroids = np.stack((np.zeros_like(transmit_centroids), transmit_centroids, np.zeros_like(transmit_centroids)), axis=1)
                 element_centroids = steering_transform.apply_to_points(transmit_centroids, inverse=True)
             else:
@@ -614,12 +608,21 @@ class Compounding(Reconstruction):
             apodizations = np.repeat(f(local_y, local_x,), len(local_z)).reshape(len(local_x), len(local_y), len(local_z))
         else:
             apodizations = np.ones((len(local_x), len(local_y), len(local_z)))
+            
+        el2el_dists = (np.sqrt(element_centroids[:,0] ** 2 + element_centroids[:,1] ** 2 + element_centroids[:,2] ** 2) + transducer.width / 2) * 1.1
 
         lx, ly, lz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
-        for centroid, rf_series in zip(element_centroids, preprocessed_data):
+        for i, (centroid, rf_series) in enumerate(zip(element_centroids, preprocessed_data)):
             element_dists = np.sqrt((lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2)
-            travel_times = np.round((transmit_dists + element_dists + t_start)/c0/dt).astype(np.int32)
-            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
+            travel_times = np.round((transmit_dists + element_dists)/c0/dt).astype(np.int32)
+            
+            if self.sensor.aperture_type == "transmit_as_receive":
+                windowed_times = travel_times
+            else:
+                windowed_times = np.where(transmit_dists + element_dists < el2el_dists[i], 0, travel_times)
+                
+            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[windowed_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
+            
             # At some point, test reconstruction with multiplication here, requires normalization
             # normalized = rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
             # normalized = normalized / np.sum(rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]) / dt
@@ -637,9 +640,7 @@ class Compounding(Reconstruction):
         return global_signal
     
     
-    
     def selective_compound(self, transducers, workers=8, resolution_multiplier=1, local=False, pressure_field=None, combine=True):
-        # Performs signal compounding only over a given a list of transducer indices
 
         if isinstance(self.transducer_set[0], Focused):
             # do nothing
