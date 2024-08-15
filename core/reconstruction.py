@@ -324,9 +324,6 @@ class Compounding(Reconstruction):
         matrix_dims = self.phantom.matrix_dims
         voxel_dims = self.phantom.voxel_dims
         
-        print("Matrix Dims: ", matrix_dims)
-        print("Voxel Dims: ", voxel_dims)
-        
         c0 = self.phantom.baseline[0]
         dt = (self.results[0][0][-1] - self.results[0][0][0]) / self.results[0][0].shape[0]
                 
@@ -544,8 +541,10 @@ class Compounding(Reconstruction):
                 
         if isinstance(transducer, Planewave):
             steering_transform = geometry.Transform(rotation=[steering_angle,0,0])
+            timedelay = transducer.width / 2 * np.abs(np.sin(np.max(transducer.steering_angles))) # timedelay gets padded on according to the max delay
         else:
             steering_transform = transducer.ray_transforms[index - running_index_list[transducer_count]]
+            timedelay = 0
 
         beam_transform = transducer_transform * steering_transform
         
@@ -594,7 +593,6 @@ class Compounding(Reconstruction):
                 
             distances = np.stack([xxx, yyy, zzz], axis=0)
             transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances,  np.array((1,0,0))))
-            # timedelays = transducer.not_transducer.beamforming_delays
 
         local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)))
         # local_image_matrix = np.ones((len(local_x), len(local_y), len(local_z))) # for multiplication, initialize to ones
@@ -609,19 +607,22 @@ class Compounding(Reconstruction):
         else:
             apodizations = np.ones((len(local_x), len(local_y), len(local_z)))
             
-        el2el_dists = (np.sqrt(element_centroids[:,0] ** 2 + element_centroids[:,1] ** 2 + element_centroids[:,2] ** 2) + transducer.width / 2) * 1.1
-
+        el2el_dists = (np.sqrt(element_centroids[:,0] ** 2 + element_centroids[:,1] ** 2 + element_centroids[:,2] ** 2) + transducer.width / 2) * 1.25
+        
+        print(len(preprocessed_data))
+        
         lx, ly, lz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
         for i, (centroid, rf_series) in enumerate(zip(element_centroids, preprocessed_data)):
             element_dists = np.sqrt((lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2)
-            travel_times = np.round((transmit_dists + element_dists)/c0/dt).astype(np.int32)
             
             if self.sensor.aperture_type == "transmit_as_receive":
+                travel_times = np.round((transmit_dists + element_dists)/c0/dt).astype(np.int32)
                 windowed_times = travel_times
             else:
-                windowed_times = np.where(transmit_dists + element_dists < el2el_dists[i], 0, travel_times)
+                travel_times = np.round((transmit_dists + element_dists + timedelay)/c0/dt).astype(np.int32)
+                windowed_times = np.where(transmit_dists + element_dists + timedelay < el2el_dists[i], 0, travel_times)
                 
-            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[windowed_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
+            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[windowed_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)] / len(preprocessed_data)
             
             # At some point, test reconstruction with multiplication here, requires normalization
             # normalized = rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]
