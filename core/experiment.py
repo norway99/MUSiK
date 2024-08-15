@@ -95,6 +95,7 @@ class Experiment:
                 if num_cpus < workers:
                     workers = num_cpus
                 self.repeat = -1
+                print(f"Setting repeat to -1 to avoid asynchronous index allocation")
         self.workers = workers
 
         os.makedirs(os.path.join(simulation_path, f'results'), exist_ok=True)
@@ -248,7 +249,7 @@ class Experiment:
                 index = indices[count]
             except:
                 break
-            if repeat == -1 or self.repeat == -1: # repeat == 2 means we are not repeating simulations, but assigning indices statically (e.g. for large batch jobs)
+            if repeat == -1 or self.repeat == -1: # repeat == -1 means we are not repeating simulations, but assigning indices statically (e.g. for large batch jobs)
                 if os.path.exists(os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}')):
                     print(f'simulation index {index} already exists, skipping')
                     count += 1
