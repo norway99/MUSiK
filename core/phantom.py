@@ -3,12 +3,9 @@ import scipy
 import scipy.ndimage
 import os
 from os import listdir
-
 import sys
-sys.path.append('../utils')
-import utils
-# import phantom_builder
-import geometry
+from utils import utils
+from utils import geometry
 from tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
 
@@ -132,7 +129,7 @@ class Phantom:
 	
  
 	# set mask and estimate tissues from a houndsfield unit-scaled image
-    def create_from_image(self, image, input_voxel_size, target_voxel_size=None, transfer_fn=None):
+    def create_from_image(self, image, input_voxel_size, target_voxel_size=None, transfer_fn=None, scale_w_noise=False):
         if target_voxel_size is None:
             target_voxel_size = self.voxel_dims
         if transfer_fn is None:
@@ -167,9 +164,15 @@ class Phantom:
             return 0
         
         new_phantom = interp(points)
+        
+        if scale_w_noise:
+            scaled_phantom = (new_phantom - np.amin(new_phantom)) / (np.amax(new_phantom) - np.amin(new_phantom))
+            noise_vec = self.rng.standard_normal(new_phantom.shape) * scaled_phantom * 50
+            new_phantom = new_phantom + noise_vec
         self.complete = np.stack((new_phantom * self.baseline[0]/self.baseline[1], new_phantom), axis = 0)   
         self.voxel_dims = np.array(target_voxel_size)
         self.matrix_dims = np.array(new_phantom.shape)
+        self.mask = np.zeros(self.matrix_dims)
         self.from_mask = False
         self.tissues = {}
         
@@ -190,7 +193,7 @@ class Phantom:
             self.mask[key] = value
 
     def build_organ_from_mesh(self, surface_mesh, voxel_size, tissue_list, dir_path = None, file_list = None):
-        import phantom_builder
+        from utils import phantom_builder
         
         if dir_path is not None:
             all_files = [f for f in listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))] 
@@ -209,6 +212,7 @@ class Phantom:
         for tissue, file in zip(tissue_list, file_list):
             self.add_tissue(tissue, mask=phantom_builder.voxelize(voxel_size, mesh_file=file, min_bounds=min_bound, max_bounds=max_bound, grid_shape=self.matrix_dims))
             print(f"Added {tissue.name}")
+        self.matrix_dims = np.array(self.mask.shape)
        
     # add tissue
     def add_tissue(self, tissue, mask=None):
@@ -228,10 +232,15 @@ class Phantom:
             
             
     def set_default_tissue(self, name):
-        if name in self.tissues.keys():
-            self.default_tissue = self.tissues[name].label
+        if type(name) == str:
+            if name in self.tissues.keys():
+                self.default_tissue = self.tissues[name].label
+        elif hasattr(name, 'label'):
+            self.add_tissue(name)
+            self.default_tissue = name.label
         else:
             print('tissue not found')
+        self.mask = np.where(self.mask == 0, self.default_tissue, self.mask)
         
         
     def add_tissue_sphere(self, centroid, radius, tissue):
@@ -304,7 +313,7 @@ class Phantom:
     
     
     def make_complete(self, mask, voxel_size): # edit this and generate_tissue, include the matrix size and the voxel size in the argument - very important
-        complete = np.zeros(mask.shape, dtype = np.float16)
+        complete = np.zeros(mask.shape, dtype=np.float16)
         for key in self.tissues.keys():
             complete = np.where(mask == self.tissues[key].label, self.generate_tissue(self.tissues[key], mask.shape, voxel_size), complete)
         return complete
@@ -336,10 +345,12 @@ class Phantom:
             final_mask = interp(list(global_indices)).reshape(matrix_size)
             final = self.make_complete(mask=final_mask, voxel_size=voxel_size)
         else:
-            interp_sos = NearestNDInterpolator((x,y,z), self.get_complete()[0])
-            interp_density = NearestNDInterpolator((x,y,z), self.get_complete()[1])
-            final_sos = interp_sos(global_indices).reshape((2,) + matrix_size)
-            final_density = interp_density(global_indices).reshape((2,) + matrix_size)
+            interp_sos = NearestNDInterpolator(xyz, self.get_complete()[0].flatten())
+            interp_density = NearestNDInterpolator(xyz, self.get_complete()[1].flatten())
+            # interp_sos = NearestNDInterpolator((x,y,z), self.get_complete()[0])
+            # interp_density = NearestNDInterpolator((x,y,z), self.get_complete()[1])
+            final_sos = interp_sos(global_indices).reshape(matrix_size)
+            final_density = interp_density(global_indices).reshape(matrix_size)
             final = np.stack((final_sos, final_density), axis=0)
                         
         return final

@@ -2,10 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import sys
-sys.path.append('../utils')
-
-import geometry
-import utils
+from utils import utils
+from utils import geometry
 from transducer import Transducer, Focused, Planewave
 
 
@@ -161,7 +159,7 @@ class TransducerSet:
             if transducer.label == label:
                 break
             ctr += 1
-        if ctr == len(self.transducer_list):
+        if ctr == len(self.transducers):
             return None
         else:
             return ctr

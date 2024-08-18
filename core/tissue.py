@@ -1,7 +1,3 @@
-import sys
-sys.path.append('../utils')
-import utils
-
 class Tissue:
     """
     A class representing a tissue in the body.
@@ -35,8 +31,8 @@ class Tissue:
                  rho=1000,
                  sigma=1, 
                  scale=0.1, 
-                 label=None,
-                 anisotropy=(1,1,1),):
+                 label=None,):
+                #  anisotropy=(1,1,1),):
 
         self.name = name
         self.c = c
@@ -44,14 +40,13 @@ class Tissue:
         self.sigma = sigma
         self.scale = scale # [s1, s2, s3, ...]
         self.label = label
-        self.anisotropy = anisotropy # Tissue anisotropy is fairly complex to implement
+        # self.anisotropy = anisotropy # Tissue anisotropy is fairly complex to implement
 	
+ 
     def save(self,):
-        # utils.dict_to_json(self.__dict__)
         return self.__dict__
 	
-    # def load(self, filepath):
-        # dictionary = utils.json_to_dict(filepath)
+ 
     def load(self, dictionary):
         self.name = dictionary['name']
         self.c = dictionary['c']
@@ -59,6 +54,6 @@ class Tissue:
         self.sigma = dictionary['sigma']
         self.scale = dictionary['scale']
         self.label = dictionary['label']
-        self.anisotropy = dictionary['anisotropy']
+        # self.anisotropy = dictionary['anisotropy']
         return self
         

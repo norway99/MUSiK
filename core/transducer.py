@@ -1,12 +1,9 @@
 import numpy as np
 import sys
-sys.path.append('../utils')
-import geometry
+from utils import utils
+from utils import geometry
 import matplotlib.pyplot as plt
-import utils
 
-sys.path.append('../k-wave-python')
-sys.path.append('./k-wave-python')
 import kwave
 import kwave.ktransducer
 from scipy.signal import hilbert
@@ -326,7 +323,8 @@ class Transducer:
         if transform is not None:
             transformed_coords = transform.apply_to_points(points) * length
             centroid = transform.apply_to_points(np.zeros_like(transformed_coords))
-                        
+            
+            ax.scatter(centroid[:,0], centroid[:,1], centroid[:,2], color = color)
             ax.quiver(centroid[:,0], centroid[:,1], centroid[:,2], 
                       transformed_coords[:,0], transformed_coords[:,1], transformed_coords[:,2], 
                       length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
@@ -437,12 +435,6 @@ class Transducer:
     
     def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
-        scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
-        scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)
-        scan_lines = self.envelope_detection(scan_lines)
-        scan_lines = self.window(scan_lines, window_factor)
-        if self.compression_fac is not None:
-            scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
         return scan_lines
         
         
@@ -460,7 +452,7 @@ class Focused(Transducer):
                  height                     = 1e-2,         # transducer total width
                  
                  radius                     = float('inf'),
-                 focus_azimuth              = 20e-3,
+                 focus_azimuth              = float('inf'),
                  focus_elevation            = float('inf'),
                  sensor_sampling_scheme     = 'centroid',
                  sweep                      = np.pi/3,
@@ -473,8 +465,8 @@ class Focused(Transducer):
                  compression_fac            = None,
                  normalize                  = True,
                  ):
-        if focus_azimuth == float('inf'):
-            print('Focused transducers must have a finite focal length. Consider instantiating a plane-wave transducer if you require infinite focal length.')
+        # if focus_azimuth == float('inf'):
+        #     print('Focused transducers must have a finite focal length. Consider instantiating a plane-wave transducer if you require infinite focal length.')
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
                          width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
                          sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, harmonic, bandwidth, compression_fac, normalize)
@@ -534,6 +526,17 @@ class Focused(Transducer):
         for key, value in transducer_dict.items():
             setattr(transducer, key, value)
         return transducer
+    
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False) -> np.ndarray:
+        scan_lines = self.window(scan_lines, window_factor)
+        scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
+        scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)
+        if not saft:
+            scan_lines = self.envelope_detection(scan_lines)
+        scan_lines = self.window(scan_lines, window_factor)
+        if self.compression_fac is not None:
+            scan_lines = kwave.reconstruction.tools.log_compression(scan_lines, self.compression_fac, self.normalize)
+        return scan_lines
 
 
 class Planewave(Transducer):
@@ -610,7 +613,7 @@ class Planewave(Transducer):
         
     #     return scan_lines
                                        
-    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1) -> np.ndarray:
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
         # scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
         # scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)

@@ -4,19 +4,22 @@ import os
 import glob
 import re
 import multiprocessing
+from queue import Empty
 import functools
 import time
 import tqdm
 import sys
-sys.path.append('../utils')
 
-import utils
-import geometry
+from utils import utils
+from utils import geometry
 from phantom import Phantom
 from transducer_set import TransducerSet
 from simulation import Simulation, SimProperties
 from sensor import Sensor
 
+from matplotlib import pyplot as plt
+
+SENTINEL = 'sentinel'
 
 class Results:
     
@@ -82,8 +85,17 @@ class Experiment:
         self.sensor = sensor
         self.nodes = nodes
         self.gpu = gpu
+        self.repeat = None
         if workers is not None and workers > 3:
-            print('workers specifies the number of simultaneous simulations running on a single gpu node, setting workers higher than 3 will likely use more RAM without decreasing overall runtime')
+            print('workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime')
+            slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
+            if slurm_cpus:
+                print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
+                num_cpus = int(slurm_cpus)
+                if num_cpus < workers:
+                    workers = num_cpus
+                self.repeat = -1
+                print(f"Setting repeat to -1 to avoid asynchronous index allocation")
         self.workers = workers
 
         os.makedirs(os.path.join(simulation_path, f'results'), exist_ok=True)
@@ -160,9 +172,7 @@ class Experiment:
     
     # subdivide
     def subdivide(self, indices=None, repeat=False):
-        if indices is None and not repeat:
-            indices = self.indices
-        elif indices is None and repeat:
+        if indices is None:
             indices = self.indices_to_run(indices, repeat=repeat)
         if len(indices) == 0:
             return None
@@ -188,11 +198,6 @@ class Experiment:
                     self.run(node, dry=dry, repeat=repeat)
         else:
             if dry:
-                # if self.workers is None:
-                #     print('dry run of simulation')
-                #     for index in tqdm.tqdm(indices):
-                #         self.simulate(index, dry=dry)
-                # else:
                 print('dry run of simulation')
                 index = 0
                 for transducer in tqdm.tqdm(self.transducer_set.transducers):
@@ -214,53 +219,82 @@ class Experiment:
                             simulations = np.array_split(subdivisions[node], self.workers - 1)
                             prep_procs = []
                             for i in range(self.workers - 1):
-                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry)))
+                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry, self.workers - 1, repeat)))
                                 prep_procs[i].start()
+                                time.sleep(10)
                         else:
                             prep_procs = [multiprocessing.Process(name='prep', target=self.prep_worker, args=(queue, subdivisions[node], dry)),]
                             prep_procs[0].start()
                             
-                        run_proc = multiprocessing.Process(name='run', target=self.run_worker, args=(queue, subdivisions[node],))
+                        run_proc = multiprocessing.Process(name='run', target=self.run_worker, args=(queue, subdivisions[node], len(prep_procs)))
                         run_proc.start()
                         
                         for prep_proc in prep_procs:
                             prep_proc.join()
                         run_proc.join()
+                        print(f'successfully joined {len(prep_procs)} preparation processes and 1 run process')
     
                 
-    def prep_worker(self, queue, indices, dry=False):
+    def prep_worker(self, queue, indices, dry=False, num_prep_workers=1, repeat=False):
+        start = time.time()
         count = 0
         while True:
-            if queue.qsize() > 3:
+            if queue.qsize() >= num_prep_workers:
                 time.sleep(5)
+                if time.time() - start > 300:
+                    print(f'prep worker has been inactive for {(time.time() - start)//60} minutes')
+                    start = time.time()
                 continue
+            try:
+                index = indices[count]
+            except:
+                break
+            if repeat == -1 or self.repeat == -1: # repeat == -1 means we are not repeating simulations, but assigning indices statically (e.g. for large batch jobs)
+                if os.path.exists(os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}')):
+                    print(f'simulation index {index} already exists, skipping')
+                    count += 1
+                    continue
             simulation = Simulation(self.sim_properties, 
                                     self.phantom, 
                                     self.transducer_set, 
                                     self.sensor, 
                                     simulation_path=self.simulation_path, 
-                                    index=indices[count], 
+                                    index=index, 
                                     gpu=self.gpu, 
                                     dry=dry, 
                                     additional_keys=self.additional_keys)
             simulation.prep()
             queue.put(simulation)
             count += 1
+            start = time.time()
             if count == len(indices):
                 break
+        queue.put(SENTINEL)
+            
     
-    
-    def run_worker(self, queue, indices):
+    def run_worker(self, queue, indices, num_prep_workers):
+        start = time.time()
+        seen_sentinel_count = 0
         count = 0
         while True:
-            if queue.qsize() == 0:
+            try:
+                simulation = queue.get(False)
+            except Empty:
                 time.sleep(1)
+                if time.time() - start > 300:
+                    print(f'prep worker has been inactive for {(time.time() - start)//60} minutes')
                 continue
-            simulation = queue.get()
-            simulation.run()
-            count += 1
-            if count == len(indices):
-                break
+            if simulation == SENTINEL:
+                seen_sentinel_count += 1
+            else:
+                simulation.run()
+                count += 1
+                start = time.time()
+            if seen_sentinel_count == num_prep_workers:
+                if count == len(indices):
+                    break
+                else:
+                    assert False, f'counting all {seen_sentinel_count} prep_workers finished but only {count}/{len(indices)} indices matched'
         
                     
     def simulate(self, index, dry=False):
@@ -297,14 +331,37 @@ class Experiment:
                 continue
             global_mask[voxel[0], voxel[1], voxel[2]] = 1
         
-    plt.imshow(self.phantom.mask[tuple(index)] + global_mask[tuple(index)], cmap='gray')
-    plt.imshow(np.stack((np.zeros_like(global_mask[tuple(index)]),
-                            global_mask[tuple(index)]*255,
-                            global_mask[tuple(index)]*255,
-                            global_mask[tuple(index)]*255), axis=-1))
+        plt.imshow(self.phantom.mask[tuple(index)] + global_mask[tuple(index)], cmap='gray_r')
+        plt.imshow(np.stack((global_mask[tuple(index)]*255, # np.zeros_like(global_mask[tuple(index)]),
+                             np.zeros_like(global_mask[tuple(index)]), # global_mask[tuple(index)]*255,
+                             global_mask[tuple(index)]*255, # np.zeros_like(global_mask[tuple(index)]),
+                             global_mask[tuple(index)]*255), axis=-1))
+        
+        
+    def get_sensor_mask(self, pad=0):
+        if pad == 0:
+            mask_shape = self.phantom.mask.shape
+        else:
+            mask_shape = (self.phantom.mask.shape[0] + pad, self.phantom.mask.shape[1] + pad, self.phantom.mask.shape[2] + pad)
+        global_mask = np.zeros(mask_shape)
+        sensor_voxels = np.divide(self.sensor.sensor_coords, self.phantom.voxel_dims)
+        phantom_centroid = np.array(mask_shape)//2 
+        recenter_matrix = np.broadcast_to(phantom_centroid, sensor_voxels.shape)
+        sensor_voxels = sensor_voxels + recenter_matrix
+        sensor_voxels_disc = np.ndarray.astype(np.round(sensor_voxels), int)
+
+        for voxel in sensor_voxels_disc:
+            if np.prod(np.where(voxel >= 0, 1, 0)) == 0: 
+                continue
+            if np.prod(np.where(voxel < global_mask.shape, 1, 0)) == 0:
+                continue
+            global_mask[voxel[0], voxel[1], voxel[2]] = 1
+        
+        return global_mask
 
         
     def plot_ray_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
+        assert index < len(self),  f'index {index} is outside experiment length {len(self)}'
         simulation = Simulation(self.sim_properties, 
                                 self.phantom, 
                                 self.transducer_set, 
