@@ -608,9 +608,7 @@ class Compounding(Reconstruction):
             apodizations = np.ones((len(local_x), len(local_y), len(local_z)))
             
         el2el_dists = (np.sqrt(element_centroids[:,0] ** 2 + element_centroids[:,1] ** 2 + element_centroids[:,2] ** 2) + transducer.width / 2) * 1.25
-        
-        print(len(preprocessed_data))
-        
+                
         lx, ly, lz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
         for i, (centroid, rf_series) in enumerate(zip(element_centroids, preprocessed_data)):
             element_dists = np.sqrt((lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2)
@@ -618,11 +616,13 @@ class Compounding(Reconstruction):
             if self.sensor.aperture_type == "transmit_as_receive":
                 travel_times = np.round((transmit_dists + element_dists)/c0/dt).astype(np.int32)
                 windowed_times = travel_times
+                denominator = len(preprocessed_data)
             else:
                 travel_times = np.round((transmit_dists + element_dists + timedelay)/c0/dt).astype(np.int32)
                 windowed_times = np.where(transmit_dists + element_dists + timedelay < el2el_dists[i], 0, travel_times)
+                denominator = transducer.get_num_elements()
                 
-            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[windowed_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)] / len(preprocessed_data)
+            local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[windowed_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)] / denominator
             
             # At some point, test reconstruction with multiplication here, requires normalization
             # normalized = rf_series[travel_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations[:len(local_x), :len(local_y), :len(local_z)]

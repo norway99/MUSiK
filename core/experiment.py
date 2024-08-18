@@ -332,8 +332,8 @@ class Experiment:
             global_mask[voxel[0], voxel[1], voxel[2]] = 1
         
         plt.imshow(self.phantom.mask[tuple(index)] + global_mask[tuple(index)], cmap='gray_r')
-        plt.imshow(np.stack((global_mask[tuple(index)]*255, # np.zeros_like(global_mask[tuple(index)]),
-                             np.zeros_like(global_mask[tuple(index)]), # global_mask[tuple(index)]*255,
+        plt.imshow(np.stack((np.zeros_like(global_mask[tuple(index)]), # global_mask[tuple(index)]*255,
+                             global_mask[tuple(index)]*255, # np.zeros_like(global_mask[tuple(index)]),
                              global_mask[tuple(index)]*255, # np.zeros_like(global_mask[tuple(index)]),
                              global_mask[tuple(index)]*255), axis=-1))
         
