@@ -208,6 +208,7 @@ class TransducerSet:
         for i in range(len(self.transducers)):
             self.transducers[i].plot_sensor_coords(ax=ax, transform=self.poses[i], color=cmap(i/len(self.transducers)))
         if phantom_coords is not None:
+            phantom_coords = phantom_coords - np.array([0,0,(np.amax(phantom_coords[:,2]) - np.amin(phantom_coords[:,2])) / 2]) # center in z
             ax.scatter(phantom_coords[:,0], phantom_coords[:,1], phantom_coords[:,2], s=0.1, color='b')
         if ax is None:
             if save:

@@ -527,7 +527,7 @@ class Focused(Transducer):
             setattr(transducer, key, value)
         return transducer
     
-    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False) -> np.ndarray:
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False, demodulate=True) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
         scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
         scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)
@@ -613,11 +613,11 @@ class Planewave(Transducer):
         
     #     return scan_lines
                                        
-    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False) -> np.ndarray:
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False, demodulate=False, gain_compensate=False) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
-        # scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
-        # scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)
-        # scan_lines = self.envelope_detection(scan_lines)
-        # scan_lines = self.window(scan_lines, window_factor)
-        
+        if demodulate:
+            scan_lines = self.envelope_detection(scan_lines)
+        if gain_compensate:
+            scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
+            scan_lines = self.window(scan_lines, window_factor)        
         return scan_lines

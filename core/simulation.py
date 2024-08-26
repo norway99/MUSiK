@@ -372,8 +372,8 @@ class Simulation:
         vmin = np.amin(sim_phantom[0])
         vmax = np.amax(sim_phantom[0])
                 
-        ax[0].imshow(sim_phantom[0, :, :, sim_phantom.shape[3]//2].T, cmap=cmap, vmin=vmin, vmax=vmax)
-        ax[1].imshow(sim_phantom[0, :, sim_phantom.shape[2]//2, :].T, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax[0].imshow(sim_phantom[0, :, ::-1, sim_phantom.shape[3]//2].T, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax[1].imshow(sim_phantom[0, :, sim_phantom.shape[2]//2, ::-1].T, cmap=cmap, vmin=vmin, vmax=vmax)
         ax[0].plot([0, sim_phantom.shape[1]-1], [sim_phantom.shape[2]//2, sim_phantom.shape[2]//2], color='red', linewidth=1)
         ax[1].plot([0, sim_phantom.shape[1]-1], [sim_phantom.shape[3]//2, sim_phantom.shape[3]//2], color='red', linewidth=1)
         
