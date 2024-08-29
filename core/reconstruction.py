@@ -682,7 +682,6 @@ class Compounding(Reconstruction):
             transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
             # timedelays = np.round(((np.linalg.norm(transmit_centroids - np.array(((transducer.focus_azimuth,0,0))), axis=1)) - transducer.focus_azimuth) / c0 / dt).astype(np.int32)
             timedelay = transducer.not_transducer.beamforming_delays
-            print(timedelay)
             timedelay = timedelay * dt
         else:
             if self.sensor.aperture_type == "transmit_as_receive":
