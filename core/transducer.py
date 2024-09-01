@@ -482,10 +482,8 @@ class Focused(Transducer):
             delays = -self.not_transducer.beamforming_delays
         else:
             num_element_signals = len(self.active_elements)
-            # Need to compute delays appropriately here - not quite sure how to do this yet
-                    # get the current beamforming weights and reverse
-            delays = np.zeros(len(self.active_elements))
-            print('beamforming for custom focused transducer not yet implemented - will not apply time delays for receive signal')
+            delays = np.zeros(num_element_signals)
+            # print('beamforming for custom focused transducer not yet implemented - will not apply time delays for receive signal')
         
         
         if len(self.active_elements) > 1:
