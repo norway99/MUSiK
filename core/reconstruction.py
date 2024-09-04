@@ -312,7 +312,7 @@ class Compounding(Reconstruction):
             pos += sensors_per_el[entry]
         return element_centroids
     
-    def compound(self, workers=8, resolution_multiplier=1, local=False, combine=True, pressure_field=None, pressure_field_resolution=None, return_local=False, attenuation_factor=None):
+    def compound(self, workers=8, resolution_multiplier=1, local=False, combine=True, pressure_field=None, pressure_field_resolution=None, return_local=False, attenuation_factor=1, volumetric=False):
 
         if isinstance(self.transducer_set[0], Focused):
             # do nothing
@@ -351,7 +351,7 @@ class Compounding(Reconstruction):
                 transducer_count += 1
                 transducer, transducer_transform = self.transducer_set[transducer_count]
             
-            arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field, pressure_field_resolution, attenuation_factor))
+            arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field, pressure_field_resolution, attenuation_factor, volumetric))
         
         with multiprocessing.Pool(workers) as p:
             if not local:
@@ -470,7 +470,7 @@ class Compounding(Reconstruction):
     #     return global_signal
     
     
-    def scanline_reconstruction_refined(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=None):
+    def scanline_reconstruction_refined(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=None, volumetric=False):
         # fetch steering angle
         if index > running_index_list[transducer_count] - 1:
             transducer_count += 1
@@ -509,8 +509,10 @@ class Compounding(Reconstruction):
         local_maxs = np.max(local_vertices, axis=0)
         local_x = np.arange(local_mins[0], local_maxs[0]+resolution, step=resolution)
         local_y = np.arange(local_mins[1], local_maxs[1]+resolution, step=resolution)
-        # local_z = np.arange(local_mins[2], local_maxs[2]+resolution, step=resolution)
-        local_z = np.array([0])
+        if volumetric:
+            local_z = np.arange(local_mins[2], local_maxs[2]+resolution, step=resolution)
+        else:
+            local_z = np.array([0])
         xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
 
         if isinstance(transducer, Focused): 
@@ -530,8 +532,8 @@ class Compounding(Reconstruction):
             element_centroids[start_element:transducer.get_num_elements(), :] = transmit_centroids
             transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
             # timedelays = np.round(((np.linalg.norm(transmit_centroids - np.array(((transducer.focus_azimuth,0,0))), axis=1)) - transducer.focus_azimuth) / c0 / dt).astype(np.int32)
-            timedelay = transducer.not_transducer.beamforming_delays
-            timedelay = timedelay * dt
+            # timedelay = transducer.not_transducer.beamforming_delays * dt
+            timedelay = 0
         else:
             if self.sensor.aperture_type == "transmit_as_receive":
                 # recreate the sensor mask
@@ -589,7 +591,8 @@ class Compounding(Reconstruction):
         local_coords = np.stack((xxx.flatten(), yyy.flatten(), zzz.flatten()), axis=-1)
         local_2_global = beam_transform.apply_to_points(local_coords)
         interpolator = NearestNDInterpolator(local_2_global, flat)
-        z = np.array([0]) # for 2d
+        if not volumetric:
+            z = np.array([0])
         gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
         global_signal = interpolator(gx,gy,gz).reshape(len(x), len(y), len(z))
         return global_signal

@@ -615,7 +615,7 @@ class Planewave(Transducer):
         scan_lines = self.window(scan_lines, window_factor)
         if demodulate:
             scan_lines = self.envelope_detection(scan_lines)
-        if gain_compensate:
+        if gain_compensate or attenuation_factor != 1:
             scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
             scan_lines = self.window(scan_lines, window_factor)        
         return scan_lines
