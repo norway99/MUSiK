@@ -31,8 +31,11 @@ def main():
         print(f"Setting repeat to -1 to avoid asynchronous index allocation")
     else:
         test_experiment.workers = args.workers
-    if not args.repeat:
-        test_experiment.indices = test_experiment.indices_to_run()
+        test_experiment.repeat = args.repeat
+        
+    test_experiment.indices = test_experiment.indices_to_run(repeat=test_experiment.repeat)
+        
+    print(test_experiment.repeat)
     test_experiment.run(args.node)
     
 if __name__ == "__main__":

@@ -230,7 +230,7 @@ class Transducer:
             sensor_z_coords = 0
         else:
             wavelength = c0/self.max_frequency
-            numpts = int(self.height/wavelength * 2)
+            numpts = max(int(self.height/wavelength * 2), 1)
             sensor_z_coords = np.linspace(-self.height/2, self.height/2, num = numpts)
         sensor_y_coords = np.transpose(np.linspace(-self.width/2 + (self.width / self.elements)/2, self.width/2 - (self.width / self.elements)/2, num = self.elements))
         
