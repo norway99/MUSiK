@@ -88,14 +88,14 @@ class Experiment:
         self.repeat = None
         if workers is not None and workers > 3:
             print('workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime')
-            slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
-            if slurm_cpus:
-                print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
-                num_cpus = int(slurm_cpus)
-                if num_cpus < workers:
-                    workers = num_cpus
-                self.repeat = -1
-                print(f"Setting repeat to -1 to avoid asynchronous index allocation")
+        slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
+        if slurm_cpus is not None:
+            print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
+            num_cpus = int(slurm_cpus)
+            if num_cpus < workers:
+                workers = num_cpus
+            self.repeat = -1
+            print(f"Setting repeat to -1 to avoid asynchronous index allocation")
         self.workers = workers
 
         os.makedirs(os.path.join(simulation_path, f'results'), exist_ok=True)

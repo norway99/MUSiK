@@ -47,7 +47,7 @@ class Phantom:
                  voxel_dims = (1e-3,1e-3,1e-3),
                  matrix_dims = (256,256,256),
                  baseline = (1500, 1000),
-                 seed = 5678,
+                 seed = None,
                  from_mask=True,
                  ):
         
@@ -175,7 +175,6 @@ class Phantom:
         self.mask = np.zeros(self.matrix_dims)
         self.from_mask = False
         self.tissues = {}
-        
 
 
 	# set mask and read tissues by supplying a list of shapes and corresponding tissues

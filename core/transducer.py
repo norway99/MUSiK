@@ -230,7 +230,7 @@ class Transducer:
             sensor_z_coords = 0
         else:
             wavelength = c0/self.max_frequency
-            numpts = int(self.height/wavelength * 2)
+            numpts = max(int(self.height/wavelength * 2), 1)
             sensor_z_coords = np.linspace(-self.height/2, self.height/2, num = numpts)
         sensor_y_coords = np.transpose(np.linspace(-self.width/2 + (self.width / self.elements)/2, self.width/2 - (self.width / self.elements)/2, num = self.elements))
         
@@ -482,10 +482,8 @@ class Focused(Transducer):
             delays = -self.not_transducer.beamforming_delays
         else:
             num_element_signals = len(self.active_elements)
-            # Need to compute delays appropriately here - not quite sure how to do this yet
-                    # get the current beamforming weights and reverse
-            delays = np.zeros(len(self.active_elements))
-            print('beamforming for custom focused transducer not yet implemented - will not apply time delays for receive signal')
+            delays = np.zeros(num_element_signals)
+            # print('beamforming for custom focused transducer not yet implemented - will not apply time delays for receive signal')
         
         
         if len(self.active_elements) > 1:
@@ -617,7 +615,7 @@ class Planewave(Transducer):
         scan_lines = self.window(scan_lines, window_factor)
         if demodulate:
             scan_lines = self.envelope_detection(scan_lines)
-        if gain_compensate:
+        if gain_compensate or attenuation_factor != 1:
             scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
             scan_lines = self.window(scan_lines, window_factor)        
         return scan_lines

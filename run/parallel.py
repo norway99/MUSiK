@@ -27,11 +27,15 @@ def main():
     if slurm_cpus is not None:
         print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
         test_experiment.workers = int(slurm_cpus)
+        test_experiment.repeat = -1
+        print(f"Setting repeat to -1 to avoid asynchronous index allocation")
     else:
         test_experiment.workers = args.workers
-    if not args.repeat:
-        test_experiment.indices = test_experiment.indices_to_run()
-    test_experiment.run(args.node)
+        test_experiment.repeat = args.repeat
+        
+    # test_experiment.indices = test_experiment.indices_to_run(repeat=test_experiment.repeat)
+        
+    test_experiment.run(args.node, repeat=test_experiment.repeat)
     
 if __name__ == "__main__":
     sys.exit(main())
