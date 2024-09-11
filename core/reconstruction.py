@@ -357,6 +357,8 @@ class Compounding(Reconstruction):
             if not save_intermediates:
                 image_matrices = list(p.starmap(self.scanline_reconstruction_refined, arguments))
             else:
+                if os.path.exists(f'{self.simulation_path}/reconstruct') == False:
+                    os.makedirs(f'{self.simulation_path}/reconstruct')
                 p.starmap(self.scanline_reconstruction_refined, arguments)
         
         if save_intermediates:
@@ -369,7 +371,10 @@ class Compounding(Reconstruction):
     
     
     def scanline_reconstruction_refined(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=None, volumetric=False, save_intermediates=False):
-        
+        if save_intermediates:
+            if os.path.exists(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npy'):
+                return 1
+            
         print(f'running reconstruction on ray {index}')
         # fetch steering angle
         if index > running_index_list[transducer_count] - 1:
@@ -497,8 +502,8 @@ class Compounding(Reconstruction):
         global_signal = interpolator(gx,gy,gz).reshape(len(x), len(y), len(z))
         
         if save_intermediates:
-            utils.save_array(global_signal, f'{self.simulation_path}/results/intermediate_image_{str(index).zfill(6)}.npy')
-            return 0
+            utils.save_array(global_signal, f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npy')
+            return 1
         return global_signal
     
     
