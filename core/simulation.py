@@ -308,7 +308,7 @@ class Simulation:
                 input_filename=input_file_full_path,
                 save_to_disk_exit=False
             )
-
+            
             sensor_data = kwave.kspaceFirstOrder3D.kspaceFirstOrder3D(
                 medium=medium,
                 kgrid=kgrid,
@@ -327,7 +327,7 @@ class Simulation:
                     os.remove(input_file)
                                 
             if self.record_pressure_field:
-                signals, other_signals = sim_sensor.sort_pressure_field(sensor_data, additional_keys, sensor_mask.shape)
+                signals, other_signals = sim_sensor.sort_pressure_field(sensor_data, additional_keys, sensor_mask.shape, self.sim_properties.PML_size)
             else:
                 signals, other_signals = sim_sensor.voxel_to_element(self.sim_properties, sim_transducer, discretized_sensor_coords, sensor_data, additional_keys)
         

@@ -182,11 +182,11 @@ class Sensor: # sensor points are represented in global coordinate space for thi
                 index = np.where(hash_list == hash_val)[0][0]
                 return data[index]
             
-    def sort_pressure_field(self, sensor_data, additional_keys, grid_shape):
-        signals = sensor_data['p'].T.reshape(grid_shape[1],grid_shape[0],-1).transpose(1,0,2)
+    def sort_pressure_field(self, sensor_data, additional_keys, grid_shape, PML_size):
+        signals = sensor_data['p'].T.reshape(grid_shape[1], grid_shape[0], -1).transpose(1,0,2)
         other_signals = []
         for other_key in additional_keys:
-            other_signals.append(sensor_data[other_key].T.reshape(grid_shape[1],grid_shape[0]).transpose(1,0))
+            other_signals.append(sensor_data[other_key].T.reshape(grid_shape[1] + PML_size[1] * 2, grid_shape[0] + PML_size[0] * 2).transpose(1,0))
         return signals, other_signals
 
 

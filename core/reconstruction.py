@@ -353,6 +353,7 @@ class Compounding(Reconstruction):
             
             arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field, pressure_field_resolution, attenuation_factor, volumetric, save_intermediates))
         
+        print(f'running reconstruction on {len(arguments)} rays')
         with multiprocessing.Pool(workers) as p:
             if not save_intermediates:
                 image_matrices = list(p.starmap(self.scanline_reconstruction_refined, arguments))
@@ -372,7 +373,9 @@ class Compounding(Reconstruction):
     
     def scanline_reconstruction_refined(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=None, volumetric=False, save_intermediates=False):
         if save_intermediates:
-            if os.path.exists(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npy'):
+            print(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npz')
+            if os.path.exists(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npz'):
+                print(f'skipping reconstruction on ray {index}')
                 return 1
             
         print(f'running reconstruction on ray {index}')
@@ -386,7 +389,7 @@ class Compounding(Reconstruction):
         dt = (self.results[index][0][-1] - self.results[index][0][0]) / (self.results[index][0].shape[0]-1)
         
         # run transducer signal preprocessing
-        preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=8, saft=True, attenuation_factor=attenuation_factor)
+        preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=4, saft=True, attenuation_factor=attenuation_factor)
         
         # pad the timesignal if duration < long diagonal
         if len(preprocessed_data.shape) == 2:

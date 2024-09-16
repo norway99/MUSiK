@@ -54,13 +54,8 @@ class Transducer:
                  cycles                     = 2,
                  elements                   = 32,
                  active_elements            = None,
-                 
                  width                      = 1e-2,         # transducer total width
                  height                     = 1e-2,         # transducer total width
-                 
-                #  element_width = 1e-4,                    # changed due to dynamic grid sizing
-                #  elevation = 0.01,                        # changed due to dynamic grid sizing
-                #  kerf = 0,                                # removed
                  radius                     = float('inf'),
                  focus_azimuth              = float('inf'), # PW by default
                  focus_elevation            = float('inf'),
@@ -413,7 +408,6 @@ class Transducer:
     def window(self, scan_lines, window_factor=4) -> np.ndarray:
         l = self.get_pulse().shape[-1] * window_factor
         scan_lines[...,:l] = 0
-        # scan_lines[...,-l:] = 0
         return scan_lines
         
         
@@ -431,7 +425,7 @@ class Transducer:
     def envelope_detection(self, scan_lines) -> np.ndarray: 
         env = np.abs(hilbert(scan_lines, axis=-1))
         return env
-    
+
     
     def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
