@@ -69,6 +69,7 @@ class Transducer:
                  bandwidth                  = 100,
                  compression_fac            = None,
                  normalize                  = True,
+                 balance_3D                 = False,        # balance_3D attempts to maintain symmetry in azimuthal and elevational axes
                  ):
         
         """
@@ -114,6 +115,7 @@ class Transducer:
         self.sensors_per_el = None
         self.sensor_coords = None
         self.type = None
+        self.balance_3D = balance_3D
 
         if imaging_ndims != 2 and imaging_ndims != 3:
             raise Exception("Imaging must take place in either 2D or 3D")
@@ -194,10 +196,18 @@ class Transducer:
             pitches = np.zeros(ray_num)
             rays = [geometry.Transform(rotation = (yaw, 0, 0)) for yaw in yaws]
         else:
-            coeff = np.where(ray_num == 1, -1, 2)
-            yaws = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
-            pitches = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])                              
-            rays = [geometry.Transform(rotation = (yaw, pitch, 0)) for yaw in yaws for pitch in pitches]
+            if self.balance_3D:
+                coeff = np.where(ray_num == 1, -1, 2)
+                xs = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
+                ys = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])
+                rays = [geometry.Transform(rotation = (np.sqrt(x**2 + y**2), 0, np.arctan2(y, x)), intrinsic=False) for y in ys for x in xs]
+                yaws = np.sqrt(xs**2 + ys**2)
+                pitches = np.sqrt(xs**2 + ys**2)
+            else:
+                coeff = np.where(ray_num == 1, -1, 2)
+                yaws = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
+                pitches = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])                          
+                rays = [geometry.Transform(rotation = (yaw, pitch, 0)) for yaw in yaws for pitch in pitches]
         return rays, yaws, pitches
     
 
@@ -458,12 +468,13 @@ class Focused(Transducer):
                  bandwidth                  = 100,
                  compression_fac            = None,
                  normalize                  = True,
+                 balance_3D                 = False,
                  ):
         # if focus_azimuth == float('inf'):
         #     print('Focused transducers must have a finite focal length. Consider instantiating a plane-wave transducer if you require infinite focal length.')
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
                          width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
-                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, harmonic, bandwidth, compression_fac, normalize)
+                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, harmonic, bandwidth, compression_fac, normalize, balance_3D)
         self.ray_transforms = self.make_ray_transforms(imaging_ndims, self.sweep, self.ray_num)[0]
         self.steering_angles = np.zeros(self.get_num_rays())
         self.type = 'focused'

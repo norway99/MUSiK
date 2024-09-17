@@ -13,10 +13,11 @@ class Transform:
                 translation = (0,0,0),
                 from_matrix = False,
                 about_axis = False,
-                intrinsic = True, # define intrinsic or extrinsic while initializing from euler angles
+                intrinsic = True,       # define intrinsic or extrinsic while initializing from euler angles
+                ordering = None,        # define the order of euler angles
                 ):
         
-        # initialize from rotation and translation   
+        # initialize from rotation and translation  
         if from_matrix:
             if isinstance(rotation, np.ndarray):
                 self.rotation = scipy.spatial.transform.Rotation.from_matrix(rotation)
@@ -27,10 +28,16 @@ class Transform:
                 self.rotation = scipy.spatial.transform.Rotation.from_matrix(np.eye(3))
             else:
                 self.rotation = scipy.spatial.transform.Rotation.from_rotvec(rotation)
-        elif intrinsic:                
-            self.rotation = scipy.spatial.transform.Rotation.from_euler("ZYX", rotation, degrees=False)  # intrinsic
+        elif intrinsic:
+            if ordering is not None: 
+                self.rotation = scipy.spatial.transform.Rotation.from_euler(ordering, rotation, degrees=False)
+            else:
+                self.rotation = scipy.spatial.transform.Rotation.from_euler("ZYX", rotation, degrees=False)  # intrinsic
         else:
-            self.rotation = scipy.spatial.transform.Rotation.from_euler("zyx", rotation, degrees=False)  # extrinsic
+            if ordering is not None:
+                self.rotation = scipy.spatial.transform.Rotation.from_euler(ordering, rotation, degrees=False)
+            else:
+                self.rotation = scipy.spatial.transform.Rotation.from_euler("zyx", rotation, degrees=False)  # extrinsic
         self.translation = np.array(translation)
 
     @classmethod
