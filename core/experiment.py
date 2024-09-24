@@ -107,7 +107,7 @@ class Experiment:
     def __len__(self):
         if self.transducer_set is None:
             return 0
-        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])     
+        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
     
     
     # save experiment
@@ -180,7 +180,9 @@ class Experiment:
     
     
     # run simulations by node
-    def run(self, node=None, dry=False, repeat=False):
+    def run(self, node=None, dry=False, repeat=False, workers=None, dry_fast=False):
+        if workers == None:
+            workers = self.workers
         assert os.path.exists(self.simulation_path), 'Attempting to run simulations but an experiment directory does not exist. Please save the experiment (my_experiment.save()) before running simulations.'
         
         if dry:
@@ -192,19 +194,59 @@ class Experiment:
             if self.nodes is None:
                 self.nodes = 1
             if dry:
-                self.run(0, dry=dry, repeat=repeat)
+                self.run(0, dry=dry, repeat=repeat, workers=workers, dry_fast=dry_fast)
             else:
                 for node in range(self.nodes):
-                    self.run(node, dry=dry, repeat=repeat)
+                    self.run(node, dry=dry, repeat=repeat, workers=workers, dry_fast=dry_fast)
         else:
             if dry:
                 print('dry run of simulation')
-                index = 0
-                for transducer in tqdm.tqdm(self.transducer_set.transducers):
-                    self.simulate(index, dry=dry)
-                    index += transducer.get_num_rays()
+                if not dry_fast:
+                    index = 0
+                    for transducer in tqdm.tqdm(self.transducer_set.transducers):
+                        self.simulate(index, dry=dry)
+                        index += transducer.get_num_rays()
+                else:
+                    print("Fast dry runs only works when all transducers are identical, use dry_fast=False if your transducers differ from each other")
+                    self.simulate(0, dry=dry)
+                    global_not_transducer = self.transducer_set.transducers[0].not_transducer
+                    global_pulse = self.transducer_set.transducers[0].get_pulse()
+                    for transducer in tqdm.tqdm(self.transducer_set.transducers):
+                        transducer.not_transducer = global_not_transducer
+                        transducer.pulse = global_pulse
+                    
+                    # print("Currently parallelized dry runs only work for identical transducers, don't try to run if your transducers differ from each other")
+                    # queue = multiprocessing.Queue()
+                    # index = 0
+                    # indices = []
+                    # for transducer in self.transducer_set.transducers:
+                    #     indices.append(index)
+                    #     index += transducer.get_num_rays()
+                    # if workers > len(indices):
+                    #     workers = len(indices)
+                    # simulations = np.array_split(indices, workers)
+                    # prep_procs = []
+                    # for i in range(workers):
+                    #     prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry, workers, repeat)))
+                    #     prep_procs[i].start()
+                    #     time.sleep(0.1)
+                    
+                    # pbar = tqdm.tqdm(total=len(indices))
+                    # while queue.qsize() < len(indices):
+                    #     time.sleep(0.5)
+                    #     pbar.update(queue.qsize() - pbar.n)
+                    # pbar.close()
+
+                    # for transducer in self.transducer_set.transducers:
+                    #     simulation = queue.get(False)
+                    #     not_transducer = simulation.prepped_simulation
+                    #     transducer.not_transducer = not_transducer
+                    
+                    # for prep_proc in prep_procs:
+                    #     prep_proc.join()
+                    # print(f'successfully joined {len(prep_procs)} preparation processes')
             else:
-                if self.workers is None:
+                if workers is None:
                     for index in indices:
                         self.simulate(index)
                 else:
@@ -212,14 +254,14 @@ class Experiment:
                     if subdivisions is None:
                         print('Found no more simulations to run.')
                     else:
-                        print('running with {} workers\n'.format(self.workers))
+                        print('running with {} workers\n'.format(workers))
                         queue = multiprocessing.Queue()
                         
-                        if self.workers > 2:
-                            simulations = np.array_split(subdivisions[node], self.workers - 1)
+                        if workers > 2:
+                            simulations = np.array_split(subdivisions[node], workers - 1)
                             prep_procs = []
-                            for i in range(self.workers - 1):
-                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry, self.workers - 1, repeat)))
+                            for i in range(workers - 1):
+                                prep_procs.append(multiprocessing.Process(name=f'prep_{i}', target=self.prep_worker, args=(queue, simulations[i], dry, workers - 1, repeat)))
                                 prep_procs[i].start()
                                 time.sleep(10)
                         else:
@@ -239,7 +281,7 @@ class Experiment:
         start = time.time()
         count = 0
         while True:
-            if queue.qsize() >= num_prep_workers:
+            if queue.qsize() >= num_prep_workers and not dry:
                 time.sleep(5)
                 if time.time() - start > 300:
                     print(f'prep worker has been inactive for {(time.time() - start)//60} minutes')
@@ -264,6 +306,7 @@ class Experiment:
                                     dry=dry, 
                                     additional_keys=self.additional_keys)
             simulation.prep()
+            
             queue.put(simulation)
             count += 1
             start = time.time()
