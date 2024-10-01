@@ -52,7 +52,7 @@ class Reconstruction:
     def __len__(self):
         if self.transducer_set is None:
             return 0
-        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
+        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transmit_transducers()])
     
         
     def add_results(self,):
@@ -100,7 +100,7 @@ class DAS(Reconstruction):
     def preprocess_data(self, global_transforms=True, workers=8, attenuation_factor=1):
         transducer_count = 0
         transducer, transducer_transform = self.transducer_set[transducer_count]
-        running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
+        running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transmit_transducers()])
         
         indices = []
         transducers = []
@@ -344,14 +344,17 @@ class Compounding(Reconstruction):
         arguments = []
 
         transducer_count = 0
-        transducer, transducer_transform = self.transducer_set[transducer_count]
-        running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
+        transducer = self.transducer_set.transmit_transducers()[transducer_count]
+        transducer_transform = self.transducer_set.transmit_poses()[transducer_count]
+        
+        running_index_list = np.cumsum([transducer.get_num_rays() for transducer in self.transducer_set.transmit_transducers()])
 
         for index in tqdm.tqdm(range(len(self.results))):
             
             if index > running_index_list[transducer_count] - 1:
                 transducer_count += 1
-                transducer, transducer_transform = self.transducer_set[transducer_count]
+                transducer = self.transducer_set.transmit_transducers()[transducer_count]
+                transducer_transform = self.transducer_set.transmit_poses()[transducer_count]
             
             arguments.append((index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field, pressure_field_resolution, attenuation_factor, volumetric, save_intermediates))
         
@@ -384,14 +387,13 @@ class Compounding(Reconstruction):
     
     
     def scanline_reconstruction_refined(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=None, volumetric=False, save_intermediates=False):
-        if save_intermediates:
-            print(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npz')
-            if os.path.exists(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npz'):
-                print(f'skipping reconstruction on ray {index}')
-                return 1
+        # if save_intermediates:
+            # if os.path.exists(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npz'):
+            #     print(f'skipping reconstruction on ray {index}')
+            #     return 1
             
         print(f'running reconstruction on ray {index}')
-        starttime=time.time()
+        # starttime=time.time()
         # fetch steering angle
         if index > running_index_list[transducer_count] - 1:
             transducer_count += 1
@@ -404,8 +406,8 @@ class Compounding(Reconstruction):
         # run transducer signal preprocessing
         preprocessed_data = transducer.preprocess(self.results[index][1], self.results[index][0], self.sim_properties, window_factor=4, saft=True, attenuation_factor=attenuation_factor)
         preprocessed_data = np.array(preprocessed_data).astype(np.float32)
-        print(f'preprocessing finished in {time.time()-starttime}')
-        starttime=time.time()
+        # print(f'preprocessing finished in {time.time()-starttime}')
+        # starttime=time.time()
         
         # pad the timesignal if duration < long diagonal
         if len(preprocessed_data.shape) == 2:
@@ -423,6 +425,7 @@ class Compounding(Reconstruction):
             beam_transform = geometry.Transform([0,0,0],[-distance,0,0]) * steering_transform
         else:
             beam_transform = transducer_transform * steering_transform
+            # print(f'beam_transform {beam_transform.rotation.as_euler("zyx")}')
         
         global_bounds = np.array([[np.min(x), np.max(x)], [np.min(y), np.max(y)],[np.min(z), np.max(z)]])
         xs, ys, zs = np.meshgrid(global_bounds[0], global_bounds[1], global_bounds[2], indexing='ij')
@@ -439,8 +442,8 @@ class Compounding(Reconstruction):
             local_z = np.array([0], dtype=np.float32)
         xxx, yyy, zzz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
         
-        print(f'local matrix created in {time.time()-starttime}')
-        starttime=time.time()
+        # print(f'local matrix created in {time.time()-starttime}')
+        # starttime=time.time()
 
         if isinstance(transducer, Focused): 
             assert self.sensor.aperture_type == "extended_aperture", "For focused transducers, the sensor aperture type must be 'extended_aperture'"
@@ -451,16 +454,25 @@ class Compounding(Reconstruction):
                 transmit_centroids[entry] = np.mean(transducer.sensor_coords[pos:pos+sensors_per_el, :], axis = 0)
                 pos += sensors_per_el
             element_centroids = beam_transform.apply_to_points(element_centroids, inverse=True)
-            label = transducer.get_label()
-            i = self.transducer_set.find_transducer(label)
+            # label = transducer.get_label()
+            # i = self.transducer_set.find_transducer(label)
+            # print(i)
             start_element = 0
-            for t in self.transducer_set.transducers[:i]:
-                start_element += t.get_num_elements()
-            element_centroids[start_element:transducer.get_num_elements(), :] = transmit_centroids
+            # --------------------------------------------------------
+            # for t in self.transducer_set.transducers[:transducer_count]:
+            #     start_element += t.get_num_elements()
+            # ------------------------------
+            # transmit_transducer_elements = self.transducer_set.transducers[transducer_count].get_num_elements()
+            # --------------------------------------------------------
+            # element_centroids[start_element:transducer.get_num_elements(), :] = transmit_centroids
+            # ------------------------------
+            # print(f'element_centroids 1 {element_centroids}')
+            # element_centroids[0:transmit_transducer_elements, :] = transmit_centroids
+            # print(f'element_centroids 2 {element_centroids}')
+            # --------------------------------------------------------
             transmit_dists = np.sqrt(xxx**2 + yyy**2 + zzz**2)
             # timedelays = np.round(((np.linalg.norm(transmit_centroids - np.array(((transducer.focus_azimuth,0,0))), axis=1)) - transducer.focus_azimuth) / c0 / dt).astype(np.int32)
             # timedelay = transducer.not_transducer.beamforming_delays * dt
-            timedelay = 0
             denominator = transducer.get_num_elements()
         else:
             if self.sensor.aperture_type == "transmit_as_receive":
@@ -477,12 +489,12 @@ class Compounding(Reconstruction):
                 denominator = transducer.get_num_elements()
                 
             distances = np.stack([xxx, yyy, zzz], axis=0)
-            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances,  np.array((1,0,0))))
+            transmit_dists = np.abs(np.einsum('ijkl,i->jkl', distances,  np.array((1,0,0)))) # computes the dot product of the distances with the unit vector in the x direction
             
         local_image_matrix = np.zeros((len(local_x), len(local_y), len(local_z)), dtype=np.float32)
         
-        print(f'transmit_dists computed in {time.time()-starttime}')
-        starttime=time.time()
+        # print(f'transmit_dists computed in {time.time()-starttime}')
+        # starttime=time.time()
         
         if pressure_field is not None:
             assert pressure_field_resolution is not None, "Pressure field resolution must be provided if pressure field is provided"
@@ -495,65 +507,76 @@ class Compounding(Reconstruction):
         else:
             apodizations = np.ones((len(local_x), len(local_y), len(local_z)))
             
-        el2el_dists = (np.sqrt(element_centroids[:,0] ** 2 + element_centroids[:,1] ** 2 + element_centroids[:,2] ** 2) + transducer.width / 2) * 1.25
+        # print(f'element_centroids {element_centroids.shape}')
+        # print(f'element_centroids {element_centroids}')
         
-        print(f'el2el_dists computed in {time.time()-starttime}')
-        starttime=time.time()
-        midtime=time.time()
+        # el2el_dists = (np.sqrt(element_centroids[:,0] ** 2 + element_centroids[:,1] ** 2 + element_centroids[:,2] ** 2) + transducer.width / 2)
+        el2el_dists = np.linalg.norm(element_centroids, axis=1) + transducer.width / 2
+        # print(f'el2el_dists {el2el_dists.shape}')
+        # print(f'el2el_dists {el2el_dists}')
+        # print(f'el2el_dists computed in {time.time()-starttime}')
+        # starttime=time.time()
         
         lx, ly, lz = np.meshgrid(local_x, local_y, local_z, indexing='ij')
         apodizations_precompute = apodizations[:len(local_x), :len(local_y), :len(local_z)].astype(np.float32)
         denominator = np.array(denominator, dtype=np.float32)
         
-        print('starting loop')
+        # print('starting loop')
         # for i in range(element_centroids.shape[0]):
-        #     compute_local_image_matrix(i, local_image_matrix, lx, ly, lz, element_centroids, preprocessed_data, transmit_dists, c0, dt, apodizations_precompute, denominator, el2el_dists, timedelay)
-        compute_local_image_matrix_matrix(local_image_matrix, lx, ly, lz, element_centroids, preprocessed_data, transmit_dists, c0, dt, apodizations_precompute, denominator, el2el_dists, timedelay)
         
-        
-        # for i, (centroid, rf_series) in enumerate(zip(element_centroids, preprocessed_data)):
-        #     element_dists = np.sqrt((lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2)
+        # ----------------------------------------------------------
+        # compute_local_image_matrix_matrix(local_image_matrix, lx, ly, lz, element_centroids, preprocessed_data, transmit_dists, c0, dt, apodizations_precompute, denominator, el2el_dists, timedelay)
+        # ----------------------------------------------------------
+        for i, (centroid, rf_series) in enumerate(zip(element_centroids, preprocessed_data)):
+            element_dists = np.sqrt((lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2)
             
-        #     if self.sensor.aperture_type == "transmit_as_receive":
-        #         travel_times = np.round((transmit_dists + element_dists)/c0/dt).astype(np.int16)
-        #         windowed_times = travel_times
-        #     else:
-        #         travel_times = np.round((transmit_dists + element_dists + timedelay)/c0/dt).astype(np.int16)
-        #         windowed_times = np.where(transmit_dists + element_dists + timedelay < el2el_dists[i], 0, travel_times)
+            if self.sensor.aperture_type == "transmit_as_receive":
+                travel_times = np.round((transmit_dists + element_dists)/c0/dt).astype(np.int16)
+                windowed_times = travel_times
+            else:
+                travel_times = np.round((transmit_dists + element_dists + timedelay)/c0/dt).astype(np.int16)
+                # windowed_times = np.where(transmit_dists + element_dists + timedelay < el2el_dists[i], 0, travel_times)
+                windowed_times = np.where(transmit_dists + element_dists + timedelay < el2el_dists[i] * 1.5, 0, travel_times) # Added a factor of 1.2 to windowing condition
+                # windowed_times = travel_times
                 
-        #     # local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[windowed_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations_precompute / denominator
-        #     local_image_matrix += rf_series[windowed_times] * apodizations_precompute / denominator
-
-        print(f'loop completed in {time.time()-starttime}')
-        starttime=time.time()
+                # print(f'travel_dists {(transmit_dists + element_dists + timedelay).shape}')
+                # print(el2el_dists[i])
+                
+            # local_image_matrix[:len(local_x), :len(local_y), :len(local_z)] += rf_series[windowed_times[:len(local_x), :len(local_y), :len(local_z)]] * apodizations_precompute / denominator
+            local_image_matrix += rf_series[windowed_times] * apodizations_precompute / denominator
+            # break
+        # ----------------------------------------------------------
+        
+        # print(f'loop completed in {time.time()-starttime}')
+        # starttime=time.time()
         
         local_image_matrix = np.abs(hilbert(local_image_matrix, axis = 0)).astype(np.float32)
         
-        print(f'hilbert transform computed in {time.time()-starttime}')
-        starttime=time.time()
-        print(f'starting interpolater')
+        # print(f'hilbert transform computed in {time.time()-starttime}')
+        # starttime=time.time()
+        # print(f'starting interpolater')
         
         flat = local_image_matrix.flatten()
         local_coords = np.stack((xxx.flatten(), yyy.flatten(), zzz.flatten()), axis=-1)
         
-        # RegularGridInterpolator (faster)
-        interpolator = RegularGridInterpolator((local_x, local_y, local_z), local_image_matrix, method='nearest', bounds_error=False, fill_value=None)
-        if not volumetric:
-            z = np.array([0])
-        gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
-        global_points = np.stack((gx, gy, gz), axis=-1).reshape(-1,3)
-        global_points = beam_transform.apply_to_points(global_points, inverse=True).astype(np.float32)
-        global_signal = interpolator(global_points).reshape(len(x), len(y), len(z))
-        
-        # # NearestNDInterpolator (slower)
-        # local_2_global = beam_transform.apply_to_points(local_coords)
-        # interpolator = NearestNDInterpolator(local_2_global, flat)
+        # # RegularGridInterpolator (faster)
+        # interpolator = RegularGridInterpolator((local_x, local_y, local_z), local_image_matrix, method='nearest', bounds_error=False, fill_value=None)
         # if not volumetric:
         #     z = np.array([0])
         # gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
-        # global_signal = interpolator(gx,gy,gz).reshape(len(x), len(y), len(z))
+        # global_points = np.stack((gx, gy, gz), axis=-1).reshape(-1,3)
+        # global_points = beam_transform.apply_to_points(global_points, inverse=True).astype(np.float32)
+        # global_signal = interpolator(global_points).reshape(len(x), len(y), len(z))
         
-        print(f'interpolation completed in {time.time()-starttime}')
+        # NearestNDInterpolator (slower)
+        local_2_global = beam_transform.apply_to_points(local_coords)
+        interpolator = NearestNDInterpolator(local_2_global, flat)
+        if not volumetric:
+            z = np.array([0])
+        gx,gy,gz = np.meshgrid(x, y, z, indexing='ij')
+        global_signal = interpolator(gx,gy,gz).reshape(len(x), len(y), len(z))
+        
+        # print(f'interpolation completed in {time.time()-starttime}')
         
         if save_intermediates:
             utils.save_array(global_signal, f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npy')
@@ -629,34 +652,34 @@ class Compounding(Reconstruction):
         
         
         
-@njit(parallel=True)
-def compute_local_image_matrix(i, local_image_matrix, lx, ly, lz, element_centroids, preprocessed_data, transmit_dists, c0, dt, apodizations, denominator, el2el_dists, timedelay):    
-    nx, ny, nz = lx.shape
-    centroid = element_centroids[i]
-    rf_series = preprocessed_data[i]
+# @njit(parallel=True)
+# def compute_local_image_matrix(i, local_image_matrix, lx, ly, lz, element_centroids, preprocessed_data, transmit_dists, c0, dt, apodizations, denominator, el2el_dists, timedelay):    
+#     nx, ny, nz = lx.shape
+#     centroid = element_centroids[i]
+#     rf_series = preprocessed_data[i]
 
-    # Compute element distances
-    element_dists = np.sqrt((lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2)
+#     # Compute element distances
+#     element_dists = np.sqrt((lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2)
 
-    # Compute travel times
-    travel_times = np.round((transmit_dists + element_dists + timedelay) / c0 / dt).astype(np.int32)
+#     # Compute travel times
+#     travel_times = np.round((transmit_dists + element_dists + timedelay) / c0 / dt).astype(np.int32)
 
-    # Clip windowed_times to valid indices
-    windowed_times = np.clip(travel_times, 0, rf_series.shape[0] - 1)
+#     # Clip windowed_times to valid indices
+#     windowed_times = np.clip(travel_times, 0, rf_series.shape[0] - 1)
 
-    # Update local_image_matrix
-    for ix in prange(nx):
-        for iy in range(ny):
-            for iz in range(nz):
-                time_idx = windowed_times[ix, iy, iz]
-                value = rf_series[time_idx] * apodizations[ix, iy, iz] / denominator
-                local_image_matrix[ix, iy, iz] += value
+#     # Update local_image_matrix
+#     for ix in prange(nx):
+#         for iy in range(ny):
+#             for iz in range(nz):
+#                 time_idx = windowed_times[ix, iy, iz]
+#                 value = rf_series[time_idx] * apodizations[ix, iy, iz] / denominator
+#                 local_image_matrix[ix, iy, iz] += value
                 
-@njit
+# @njit
 def compute_local_image_matrix_matrix(local_image_matrix, lx, ly, lz, element_centroids, preprocessed_data, transmit_dists, c0, dt, apodizations, denominator, el2el_dists, timedelay):    
     nx, ny, nz = lx.shape
     flat_apodizations = apodizations.flatten()
-    
+    local_image_matrix_flat = local_image_matrix.flatten()
     for i in range(element_centroids.shape[0]):
         centroid = element_centroids[i]
         rf_series = preprocessed_data[i].flatten()
@@ -665,11 +688,15 @@ def compute_local_image_matrix_matrix(local_image_matrix, lx, ly, lz, element_ce
         element_dists = np.sqrt((lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2)
 
         # Compute travel times
-        travel_times = np.round((transmit_dists + element_dists + timedelay) / c0 / dt).astype(np.int32).flatten()
+        travel_times = np.round((transmit_dists + element_dists + timedelay) / c0 / dt).astype(np.int32)
 
-        # Clip windowed_times to valid indices
-        windowed_times = np.clip(travel_times, 0, rf_series.shape[0] - 1)
+        # Window to reduce intra-transducer interference
+        # windowed_times = np.where(transmit_dists + element_dists + timedelay < el2el_dists[i], 0, travel_times)
+        windowed_times = np.clip(travel_times, 0, rf_series.shape[0] - 1).flatten()
         
         # Update local_image_matrix
         value = rf_series[windowed_times] * flat_apodizations / denominator
-        local_image_matrix += value.reshape(nx, ny, nz)
+        local_image_matrix_flat += value
+    
+        
+    local_image_matrix += local_image_matrix_flat.reshape(nx, ny, nz)

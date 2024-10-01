@@ -207,14 +207,14 @@ class Simulation:
     # given a simulation index, return the simulation file
     def __prep_by_index(self, index, dry=False):
         start_time = time.time()
-        for transducer_number, transducer in enumerate(self.transducer_set.transducers):
+        for transducer_number, transducer in enumerate(self.transducer_set.transmit_transducers()):
             if index - transducer.get_num_rays() < 0:
                 steering_angle = transducer.steering_angles[index]
                 sim_phantom = self.phantom.get_complete()
                 sim_sensor = self.sensor
                 
                 if not dry:
-                    affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                    affine = self.transducer_set.transmit_poses()[transducer_number] * transducer.ray_transforms[index]
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
@@ -354,10 +354,10 @@ class Simulation:
         
 
     def plot_medium_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
-        for transducer_number, transducer in enumerate(self.transducer_set.transducers):
+        for transducer_number, transducer in enumerate(self.transducer_set.transmit_transducers()):
             if index - transducer.get_num_rays() < 0:
                 # affine = transducer.ray_transforms[index] * self.transducer_set.poses[transducer_number]
-                affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                affine = self.transducer_set.transmit_poses()[transducer_number] * transducer.ray_transforms[index]
                 steering_angle = transducer.steering_angles[index]
                 self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0])
                 sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))

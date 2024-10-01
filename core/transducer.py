@@ -70,6 +70,7 @@ class Transducer:
                  compression_fac            = None,
                  normalize                  = True,
                  balance_3D                 = False,        # balance_3D attempts to maintain symmetry in azimuthal and elevational axes
+                 transmit                   = True,         # if false, use as sensor only
                  ):
         
         """
@@ -116,6 +117,7 @@ class Transducer:
         self.sensor_coords = None
         self.type = None
         self.balance_3D = balance_3D
+        self.transmit = transmit
 
         if imaging_ndims != 2 and imaging_ndims != 3:
             raise Exception("Imaging must take place in either 2D or 3D")
@@ -236,7 +238,10 @@ class Transducer:
         else:
             wavelength = c0/self.max_frequency
             numpts = max(int(self.height/wavelength * 2), 1)
-            sensor_z_coords = np.linspace(-self.height/2, self.height/2, num = numpts)
+            if numpts == 1:
+                sensor_z_coords = np.array([0])
+            else:
+                sensor_z_coords = np.linspace(-self.height/2, self.height/2, num = numpts, endpoint = True)
         sensor_y_coords = np.transpose(np.linspace(-self.width/2 + (self.width / self.elements)/2, self.width/2 - (self.width / self.elements)/2, num = self.elements))
         
         sensor_coords = np.zeros((self.elements, numpts, 3))
@@ -330,16 +335,17 @@ class Transducer:
             centroid = transform.apply_to_points(np.zeros_like(transformed_coords))
             
             ax.scatter(centroid[:,0], centroid[:,1], centroid[:,2], color = color)
-            ax.quiver(centroid[:,0], centroid[:,1], centroid[:,2], 
-                      transformed_coords[:,0], transformed_coords[:,1], transformed_coords[:,2], 
-                      length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
-            ax.quiver(centroid[:,0] + np.roll(transformed_coords[:,0],1), 
-                      centroid[:,1] + np.roll(transformed_coords[:,1],1), 
-                      centroid[:,2] + np.roll(transformed_coords[:,2],1), 
-                      transformed_coords[:,0] - np.roll(transformed_coords[:,0],1), 
-                      transformed_coords[:,1] - np.roll(transformed_coords[:,1],1), 
-                      transformed_coords[:,2] - np.roll(transformed_coords[:,2],1), 
-                      length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
+            if self.transmit:
+                ax.quiver(centroid[:,0], centroid[:,1], centroid[:,2], 
+                        transformed_coords[:,0], transformed_coords[:,1], transformed_coords[:,2], 
+                        length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
+                ax.quiver(centroid[:,0] + np.roll(transformed_coords[:,0],1), 
+                        centroid[:,1] + np.roll(transformed_coords[:,1],1), 
+                        centroid[:,2] + np.roll(transformed_coords[:,2],1), 
+                        transformed_coords[:,0] - np.roll(transformed_coords[:,0],1), 
+                        transformed_coords[:,1] - np.roll(transformed_coords[:,1],1), 
+                        transformed_coords[:,2] - np.roll(transformed_coords[:,2],1), 
+                        length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
         else:
             points = points * length
             centroid = np.zeros_like(points)
@@ -469,12 +475,14 @@ class Focused(Transducer):
                  compression_fac            = None,
                  normalize                  = True,
                  balance_3D                 = False,
+                 transmit                   = True,
                  ):
         # if focus_azimuth == float('inf'):
         #     print('Focused transducers must have a finite focal length. Consider instantiating a plane-wave transducer if you require infinite focal length.')
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
                          width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
-                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, harmonic, bandwidth, compression_fac, normalize, balance_3D)
+                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, 
+                         harmonic, bandwidth, compression_fac, normalize, balance_3D, transmit)
         self.ray_transforms = self.make_ray_transforms(imaging_ndims, self.sweep, self.ray_num)[0]
         self.steering_angles = np.zeros(self.get_num_rays())
         self.type = 'focused'
@@ -564,11 +572,12 @@ class Planewave(Transducer):
                  imaging_ndims = 2, # should be 2 or 3
                  steering_angles = None,
                  transmit_apodization = 'Rectangular',
-                 receive_apodization = 'Rectangular'
+                 receive_apodization = 'Rectangular',
+                 transmit = True,
                  ):    
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
                          width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
-                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization)
+                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, transmit)
 
         self.set_steering_angles(imaging_ndims, sweep, self.ray_num)
         if steering_angles is not None:

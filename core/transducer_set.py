@@ -16,6 +16,7 @@ class TransducerSet:
                  ):
         self.transducers = transducers # list of transducers
         self.n_transducers = len(transducers)
+        self.n_transmit = len([0 for t in transducers if t.transmit])
         if len(poses) == 0:
             self.poses = [None for i in range(self.n_transducers)]
         else:
@@ -65,7 +66,6 @@ class TransducerSet:
         
         
     def generate_extrinsics(self, shape=None, extrinsics_kwargs=None): # put tissue_mask = None, target = None, attenuation_threshold = None into extrinsics_kwargs
-
         if shape == "constrained":
             
             if tissue_mask is None or target is None or attenuation_threshold is None:
@@ -94,6 +94,13 @@ class TransducerSet:
     
     def optimize_extrinsics(self, tissue_mask, target, attenuation_threshold):
         pass
+    
+    
+    def transmit_transducers(self,) -> list:
+        return [transducer for transducer in self.transducers if transducer.transmit]
+    
+    def transmit_poses(self,) -> list:
+        return [pose for pose, transducer in zip(self.poses, self.transducers) if transducer.transmit]
         
         
     def assign_pose(self, index, transform):

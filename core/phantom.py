@@ -67,7 +67,7 @@ class Phantom:
         self.baseline = baseline
         self.from_mask = from_mask
         self.complete = None
-        self.default_tissue = None
+        self.default_tissue = 0
         
         
     # save phantom to source dir containing tissues, mask, and source
@@ -231,9 +231,8 @@ class Phantom:
             
             
     def set_default_tissue(self, name):
-        if type(name) == str:
-            if name in self.tissues.keys():
-                self.default_tissue = self.tissues[name].label
+        if type(name) == str and name in self.tissues.keys():
+            self.default_tissue = self.tissues[name].label
         elif hasattr(name, 'label'):
             self.add_tissue(name)
             self.default_tissue = name.label
@@ -313,6 +312,7 @@ class Phantom:
     
     def make_complete(self, mask, voxel_size): # edit this and generate_tissue, include the matrix size and the voxel size in the argument - very important
         complete = np.zeros(mask.shape, dtype=np.float16)
+        complete = np.ones(mask.shape, dtype=np.float16) * self.default_tissue
         for key in self.tissues.keys():
             complete = np.where(mask == self.tissues[key].label, self.generate_tissue(self.tissues[key], mask.shape, voxel_size), complete)
         return complete

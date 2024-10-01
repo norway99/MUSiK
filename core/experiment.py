@@ -107,7 +107,7 @@ class Experiment:
     def __len__(self):
         if self.transducer_set is None:
             return 0
-        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transducers])
+        return sum([transducer.get_num_rays() for transducer in self.transducer_set.transmit_transducers()])
     
     
     # save experiment
@@ -203,14 +203,15 @@ class Experiment:
                 print('dry run of simulation')
                 if not dry_fast:
                     index = 0
-                    for transducer in tqdm.tqdm(self.transducer_set.transducers):
+                    for transducer in tqdm.tqdm(self.transducer_set.transmit_transducers()):
                         self.simulate(index, dry=dry)
                         index += transducer.get_num_rays()
                 else:
                     print("Fast dry runs only works when all transducers are identical, use dry_fast=False if your transducers differ from each other")
                     self.simulate(0, dry=dry)
-                    global_not_transducer = self.transducer_set.transducers[0].not_transducer
-                    global_pulse = self.transducer_set.transducers[0].get_pulse()
+                    global_not_transducer = self.transducer_set.transmit_transducers()[0].not_transducer
+                    global_pulse = self.transducer_set.transmit_transducers()[0].get_pulse()
+                    # for transducer in tqdm.tqdm(self.transducer_set.transmit_transducers()):
                     for transducer in tqdm.tqdm(self.transducer_set.transducers):
                         transducer.not_transducer = global_not_transducer
                         transducer.pulse = global_pulse
