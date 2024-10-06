@@ -71,6 +71,7 @@ class Experiment:
                  gpu             = True,
                  workers         = 2,
                  additional_keys = [],
+                 repeat          = None,
                  ):
         if simulation_path is None:
             simulation_path = os.path.join(os.getcwd(), 'experiment')
@@ -85,7 +86,7 @@ class Experiment:
         self.sensor = sensor
         self.nodes = nodes
         self.gpu = gpu
-        self.repeat = None
+        self.repeat = repeat
         if workers is not None and workers > 3:
             print('workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime')
         slurm_cpus = os.getenv('SLURM_CPUS_PER_TASK') # Check to see if we are in a slurm computing environment to avoid oversubscription
@@ -293,7 +294,7 @@ class Experiment:
             except:
                 break
             if repeat == -1 or self.repeat == -1: # repeat == -1 means we are not repeating simulations, but assigning indices statically (e.g. for large batch jobs)
-                if os.path.exists(os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}')):
+                if os.path.exists(os.path.join(self.simulation_path, f'results/signal_{str(index).zfill(6)}.npy')):
                     print(f'simulation index {index} already exists, skipping')
                     count += 1
                     continue
