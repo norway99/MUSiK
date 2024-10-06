@@ -36,3 +36,5 @@ __pycache__
 *.blend1
 *.mtl
 k-wave-python/
+*.svg
+

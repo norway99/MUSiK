@@ -25,14 +25,14 @@ def main():
     
     args = parser.parse_args()
     
-    test_experiment = experiment.Experiment.load('breast_synthetic_aperture_2')
+    test_experiment = experiment.Experiment.load('breast_synthetic_aperture_3')
     test_experiment.nodes = 1
     test_experiment.run(repeat=False, node=args.node)
     
     test_experiment.run(dry=True, dry_fast=True)
     test_experiment.add_results()
     test_reconstruction = reconstruction.Compounding(experiment=test_experiment)
-    test_reconstruction.compound(workers=8, resolution_multiplier=1, combine=False, volumetric=True, attenuation_factor = 20, save_intermediates=True)
+    test_reconstruction.compound(workers=8, resolution_multiplier=1, combine=False, volumetric=True, attenuation_factor = 16, save_intermediates=True)
     
 if __name__ == "__main__":
     sys.exit(main())
