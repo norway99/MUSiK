@@ -198,10 +198,13 @@ class Transducer:
             pitches = np.zeros(ray_num)
             rays = [geometry.Transform(rotation = (yaw, 0, 0)) for yaw in yaws]
         else:
-            if self.balance_3D:
+            if self. balance_3D:
                 coeff = np.where(ray_num == 1, -1, 2)
-                xs = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
-                ys = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])
+                # xs = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
+                # ys = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])
+                xs = np.arctan(np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0]))
+                ys = np.arctan(np.linspace(-sweep[1]/coeff[1], sweep[0]/coeff[1], ray_num[1]))
+                
                 rays = [geometry.Transform(rotation = (np.sqrt(x**2 + y**2), 0, np.arctan2(y, x)), intrinsic=False) for y in ys for x in xs]
                 yaws = np.sqrt(xs**2 + ys**2)
                 pitches = np.sqrt(xs**2 + ys**2)
