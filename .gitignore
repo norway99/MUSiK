@@ -11,8 +11,8 @@
 *.avi
 *.json
 *.csv
-*.obj
-*.ply
+#*.obj
+#*.ply
 *.mtl
 *.blend
 *.zip
