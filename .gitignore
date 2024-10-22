@@ -11,8 +11,8 @@
 *.avi
 *.json
 *.csv
-*.obj
-*.ply
+#*.obj
+#*.ply
 *.mtl
 *.blend
 *.zip
@@ -36,3 +36,5 @@ __pycache__
 *.blend1
 *.mtl
 k-wave-python/
+*.svg
+

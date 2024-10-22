@@ -207,14 +207,14 @@ class Simulation:
     # given a simulation index, return the simulation file
     def __prep_by_index(self, index, dry=False):
         start_time = time.time()
-        for transducer_number, transducer in enumerate(self.transducer_set.transducers):
+        for transducer_number, transducer in enumerate(self.transducer_set.transmit_transducers()):
             if index - transducer.get_num_rays() < 0:
                 steering_angle = transducer.steering_angles[index]
                 sim_phantom = self.phantom.get_complete()
                 sim_sensor = self.sensor
                 
                 if not dry:
-                    affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                    affine = self.transducer_set.transmit_poses()[transducer_number] * transducer.ray_transforms[index]
                     self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0], (transducer.width, transducer.height))
                     sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
                     prepped = self.__prep_simulation(index, sim_phantom, transducer, sim_sensor, affine, steering_angle)
@@ -308,7 +308,7 @@ class Simulation:
                 input_filename=input_file_full_path,
                 save_to_disk_exit=False
             )
-
+            
             sensor_data = kwave.kspaceFirstOrder3D.kspaceFirstOrder3D(
                 medium=medium,
                 kgrid=kgrid,
@@ -327,7 +327,7 @@ class Simulation:
                     os.remove(input_file)
                                 
             if self.record_pressure_field:
-                signals, other_signals = sim_sensor.sort_pressure_field(sensor_data, additional_keys, sensor_mask.shape)
+                signals, other_signals = sim_sensor.sort_pressure_field(sensor_data, additional_keys, sensor_mask.shape, self.sim_properties.PML_size)
             else:
                 signals, other_signals = sim_sensor.voxel_to_element(self.sim_properties, sim_transducer, discretized_sensor_coords, sensor_data, additional_keys)
         
@@ -354,10 +354,10 @@ class Simulation:
         
 
     def plot_medium_path(self, index, ax=None, save=False, save_path=None, cmap='viridis'):
-        for transducer_number, transducer in enumerate(self.transducer_set.transducers):
+        for transducer_number, transducer in enumerate(self.transducer_set.transmit_transducers()):
             if index - transducer.get_num_rays() < 0:
                 # affine = transducer.ray_transforms[index] * self.transducer_set.poses[transducer_number]
-                affine = self.transducer_set.poses[transducer_number] * transducer.ray_transforms[index]
+                affine = self.transducer_set.transmit_poses()[transducer_number] * transducer.ray_transforms[index]
                 steering_angle = transducer.steering_angles[index]
                 self.sim_properties.optimize_simulation_parameters(transducer.max_frequency, self.phantom.baseline[0])
                 sim_phantom = self.phantom.interpolate_phantom(self.sim_properties.bounds, affine, self.sim_properties.voxel_size, np.array(self.sim_properties.matrix_size) - 2 * np.array(self.sim_properties.PML_size))
@@ -372,8 +372,8 @@ class Simulation:
         vmin = np.amin(sim_phantom[0])
         vmax = np.amax(sim_phantom[0])
                 
-        ax[0].imshow(sim_phantom[0, :, :, sim_phantom.shape[3]//2].T, cmap=cmap, vmin=vmin, vmax=vmax)
-        ax[1].imshow(sim_phantom[0, :, sim_phantom.shape[2]//2, :].T, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax[0].imshow(sim_phantom[0, :, ::-1, sim_phantom.shape[3]//2].T, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax[1].imshow(sim_phantom[0, :, sim_phantom.shape[2]//2, ::-1].T, cmap=cmap, vmin=vmin, vmax=vmax)
         ax[0].plot([0, sim_phantom.shape[1]-1], [sim_phantom.shape[2]//2, sim_phantom.shape[2]//2], color='red', linewidth=1)
         ax[1].plot([0, sim_phantom.shape[1]-1], [sim_phantom.shape[3]//2, sim_phantom.shape[3]//2], color='red', linewidth=1)
         

@@ -54,13 +54,8 @@ class Transducer:
                  cycles                     = 2,
                  elements                   = 32,
                  active_elements            = None,
-                 
                  width                      = 1e-2,         # transducer total width
                  height                     = 1e-2,         # transducer total width
-                 
-                #  element_width = 1e-4,                    # changed due to dynamic grid sizing
-                #  elevation = 0.01,                        # changed due to dynamic grid sizing
-                #  kerf = 0,                                # removed
                  radius                     = float('inf'),
                  focus_azimuth              = float('inf'), # PW by default
                  focus_elevation            = float('inf'),
@@ -74,6 +69,8 @@ class Transducer:
                  bandwidth                  = 100,
                  compression_fac            = None,
                  normalize                  = True,
+                 balance_3D                 = False,        # balance_3D attempts to maintain symmetry in azimuthal and elevational axes
+                 transmit                   = True,         # if false, use as sensor only
                  ):
         
         """
@@ -119,6 +116,8 @@ class Transducer:
         self.sensors_per_el = None
         self.sensor_coords = None
         self.type = None
+        self.balance_3D = balance_3D
+        self.transmit = transmit
 
         if imaging_ndims != 2 and imaging_ndims != 3:
             raise Exception("Imaging must take place in either 2D or 3D")
@@ -199,10 +198,21 @@ class Transducer:
             pitches = np.zeros(ray_num)
             rays = [geometry.Transform(rotation = (yaw, 0, 0)) for yaw in yaws]
         else:
-            coeff = np.where(ray_num == 1, -1, 2)
-            yaws = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
-            pitches = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])                              
-            rays = [geometry.Transform(rotation = (yaw, pitch, 0)) for yaw in yaws for pitch in pitches]
+            if self. balance_3D:
+                coeff = np.where(ray_num == 1, -1, 2)
+                # xs = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
+                # ys = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])
+                xs = np.arctan(np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0]))
+                ys = np.arctan(np.linspace(-sweep[1]/coeff[1], sweep[0]/coeff[1], ray_num[1]))
+                
+                rays = [geometry.Transform(rotation = (np.sqrt(x**2 + y**2), 0, np.arctan2(y, x)), intrinsic=False) for y in ys for x in xs]
+                yaws = np.sqrt(xs**2 + ys**2)
+                pitches = np.sqrt(xs**2 + ys**2)
+            else:
+                coeff = np.where(ray_num == 1, -1, 2)
+                yaws = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
+                pitches = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])                          
+                rays = [geometry.Transform(rotation = (yaw, pitch, 0)) for yaw in yaws for pitch in pitches]
         return rays, yaws, pitches
     
 
@@ -230,8 +240,11 @@ class Transducer:
             sensor_z_coords = 0
         else:
             wavelength = c0/self.max_frequency
-            numpts = int(self.height/wavelength * 2)
-            sensor_z_coords = np.linspace(-self.height/2, self.height/2, num = numpts)
+            numpts = max(int(self.height/wavelength * 2), 1)
+            if numpts == 1:
+                sensor_z_coords = np.array([0])
+            else:
+                sensor_z_coords = np.linspace(-self.height/2, self.height/2, num = numpts, endpoint = True)
         sensor_y_coords = np.transpose(np.linspace(-self.width/2 + (self.width / self.elements)/2, self.width/2 - (self.width / self.elements)/2, num = self.elements))
         
         sensor_coords = np.zeros((self.elements, numpts, 3))
@@ -325,16 +338,17 @@ class Transducer:
             centroid = transform.apply_to_points(np.zeros_like(transformed_coords))
             
             ax.scatter(centroid[:,0], centroid[:,1], centroid[:,2], color = color)
-            ax.quiver(centroid[:,0], centroid[:,1], centroid[:,2], 
-                      transformed_coords[:,0], transformed_coords[:,1], transformed_coords[:,2], 
-                      length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
-            ax.quiver(centroid[:,0] + np.roll(transformed_coords[:,0],1), 
-                      centroid[:,1] + np.roll(transformed_coords[:,1],1), 
-                      centroid[:,2] + np.roll(transformed_coords[:,2],1), 
-                      transformed_coords[:,0] - np.roll(transformed_coords[:,0],1), 
-                      transformed_coords[:,1] - np.roll(transformed_coords[:,1],1), 
-                      transformed_coords[:,2] - np.roll(transformed_coords[:,2],1), 
-                      length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
+            if self.transmit:
+                ax.quiver(centroid[:,0], centroid[:,1], centroid[:,2], 
+                        transformed_coords[:,0], transformed_coords[:,1], transformed_coords[:,2], 
+                        length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
+                ax.quiver(centroid[:,0] + np.roll(transformed_coords[:,0],1), 
+                        centroid[:,1] + np.roll(transformed_coords[:,1],1), 
+                        centroid[:,2] + np.roll(transformed_coords[:,2],1), 
+                        transformed_coords[:,0] - np.roll(transformed_coords[:,0],1), 
+                        transformed_coords[:,1] - np.roll(transformed_coords[:,1],1), 
+                        transformed_coords[:,2] - np.roll(transformed_coords[:,2],1), 
+                        length=1, linewidth=0.5, arrow_length_ratio=0, normalize=False, color=color)
         else:
             points = points * length
             centroid = np.zeros_like(points)
@@ -413,7 +427,6 @@ class Transducer:
     def window(self, scan_lines, window_factor=4) -> np.ndarray:
         l = self.get_pulse().shape[-1] * window_factor
         scan_lines[...,:l] = 0
-        # scan_lines[...,-l:] = 0
         return scan_lines
         
         
@@ -431,7 +444,7 @@ class Transducer:
     def envelope_detection(self, scan_lines) -> np.ndarray: 
         env = np.abs(hilbert(scan_lines, axis=-1))
         return env
-    
+
     
     def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
@@ -464,12 +477,15 @@ class Focused(Transducer):
                  bandwidth                  = 100,
                  compression_fac            = None,
                  normalize                  = True,
+                 balance_3D                 = False,
+                 transmit                   = True,
                  ):
         # if focus_azimuth == float('inf'):
         #     print('Focused transducers must have a finite focal length. Consider instantiating a plane-wave transducer if you require infinite focal length.')
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
                          width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
-                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, harmonic, bandwidth, compression_fac, normalize)
+                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, 
+                         harmonic, bandwidth, compression_fac, normalize, balance_3D, transmit)
         self.ray_transforms = self.make_ray_transforms(imaging_ndims, self.sweep, self.ray_num)[0]
         self.steering_angles = np.zeros(self.get_num_rays())
         self.type = 'focused'
@@ -482,10 +498,8 @@ class Focused(Transducer):
             delays = -self.not_transducer.beamforming_delays
         else:
             num_element_signals = len(self.active_elements)
-            # Need to compute delays appropriately here - not quite sure how to do this yet
-                    # get the current beamforming weights and reverse
-            delays = np.zeros(len(self.active_elements))
-            print('beamforming for custom focused transducer not yet implemented - will not apply time delays for receive signal')
+            delays = np.zeros(num_element_signals)
+            # print('beamforming for custom focused transducer not yet implemented - will not apply time delays for receive signal')
         
         
         if len(self.active_elements) > 1:
@@ -527,7 +541,7 @@ class Focused(Transducer):
             setattr(transducer, key, value)
         return transducer
     
-    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False) -> np.ndarray:
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False, demodulate=True) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
         scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
         scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)
@@ -561,11 +575,12 @@ class Planewave(Transducer):
                  imaging_ndims = 2, # should be 2 or 3
                  steering_angles = None,
                  transmit_apodization = 'Rectangular',
-                 receive_apodization = 'Rectangular'
+                 receive_apodization = 'Rectangular',
+                 transmit = True,
                  ):    
         super().__init__(label, max_frequency, source_strength, cycles, elements, active_elements,
                          width, height, radius, focus_azimuth, focus_elevation, sensor_sampling_scheme,
-                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization)
+                         sweep, ray_num, imaging_ndims, transmit_apodization, receive_apodization, transmit)
 
         self.set_steering_angles(imaging_ndims, sweep, self.ray_num)
         if steering_angles is not None:
@@ -613,11 +628,11 @@ class Planewave(Transducer):
         
     #     return scan_lines
                                        
-    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False) -> np.ndarray:
+    def preprocess(self, scan_lines, t_array, sim_properties, window_factor=4, attenuation_factor=1, saft=False, demodulate=False, gain_compensate=False) -> np.ndarray:
         scan_lines = self.window(scan_lines, window_factor)
-        # scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
-        # scan_lines = kwave.utils.filters.gaussian_filter(scan_lines, 1 / (t_array[-1] / t_array.shape[0]), self.harmonic * self.get_freq(), self.bandwidth)
-        # scan_lines = self.envelope_detection(scan_lines)
-        # scan_lines = self.window(scan_lines, window_factor)
-        
+        if demodulate:
+            scan_lines = self.envelope_detection(scan_lines)
+        if gain_compensate or attenuation_factor != 1:
+            scan_lines = self.gain_compensation(scan_lines, t_array, sim_properties, attenuation_factor)
+            scan_lines = self.window(scan_lines, window_factor)        
         return scan_lines
