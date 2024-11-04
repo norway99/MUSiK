@@ -11,6 +11,11 @@ or if you have already cloned the MUSik repo, use this
 git submodule update --init --recursive --remote
 ```
 Remember to add the **remote** flag, because the k-wave package is updating frequently, and there are deprecated dependencies that may cause installation failure.
+
+Or alternatively, k-wave-python just had a stable release, and you can just run pip install instead of using the submodule
+```
+pip install k-wave-python
+```
 #### Running for the first time
 k-wave needs to download some binaries at the first run. It may cause issue when you are using cloud computating resources (like SuperCloud) whose computation nodes do not have internet access.
 I am using SuperCloud and there is a ["download" partition](https://mit-supercloud.github.io/supercloud-docs/using-the-download-partition/) with data transfer nodes.
