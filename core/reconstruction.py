@@ -386,7 +386,7 @@ class Compounding(Reconstruction):
             return image_matrices
     
     
-    def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=None, volumetric=False, save_intermediates=False):
+    def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=1, volumetric=False, save_intermediates=False):
         # if save_intermediates:
             # if os.path.exists(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npz'):
             #     print(f'skipping reconstruction on ray {index}')
