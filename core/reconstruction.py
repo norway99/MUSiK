@@ -365,17 +365,17 @@ class Compounding(Reconstruction):
         if workers > 1:
             with multiprocessing.Pool(workers) as p:
                 if not save_intermediates:
-                    image_matrices = list(p.starmap(self.scanline_reconstruction_refined, arguments))
+                    image_matrices = list(p.starmap(self.scanline_reconstruction, arguments))
                 else:
-                    p.starmap(self.scanline_reconstruction_refined, arguments)
+                    p.starmap(self.scanline_reconstruction, arguments)
         else:
             if not save_intermediates:
                 image_matrices = []
                 for argument in arguments:
-                    image_matrices.append(self.scanline_reconstruction_refined(*argument))
+                    image_matrices.append(self.scanline_reconstruction(*argument))
             else:
                 for argument in arguments:
-                    self.scanline_reconstruction_refined(*argument)
+                    self.scanline_reconstruction(*argument)
         
         if save_intermediates:
             return 0 # load in intermediate files and save sum
@@ -386,7 +386,7 @@ class Compounding(Reconstruction):
             return image_matrices
     
     
-    def scanline_reconstruction_refined(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=None, volumetric=False, save_intermediates=False):
+    def scanline_reconstruction(self, index, running_index_list, transducer_count, transducer, transducer_transform, x, y, z, c0, dt, element_centroids, resolution, return_local, pressure_field=None, pressure_field_resolution=None, attenuation_factor=1, volumetric=False, save_intermediates=False):
         # if save_intermediates:
             # if os.path.exists(f'{self.simulation_path}/reconstruct/intermediate_image_{str(index).zfill(6)}.npz'):
             #     print(f'skipping reconstruction on ray {index}')
@@ -636,14 +636,14 @@ class Compounding(Reconstruction):
                 if not local:
                     image_matrices = list(p.starmap(self.scanline_reconstruction, arguments))
                 else:
-                    p.starmap(self.scanline_reconstruction_refined, arguments)
+                    p.starmap(self.scanline_reconstruction, arguments)
         else:
             if not local:
                 for argument in arguments:
                     image_matrices.append(self.scanline_reconstruction(*argument))
             else:
                 for argument in arguments:
-                    self.scanline_reconstruction_refined(*argument)
+                    self.scanline_reconstruction(*argument)
 
         if combine:
             return np.sum(np.stack(image_matrices, axis=0), axis=0)
