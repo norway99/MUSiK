@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 import sys
 from utils import utils
 from utils import geometry
@@ -224,6 +223,7 @@ class TransducerSet:
                 plt.show()
 
     def plot_transducers(self):
+        import plotly.graph_objects as go
         coords = []
         for i in range(len(self.transducers)):
             coords.append(self.poses[i].apply_to_points(self.transducers[i].sensor_coords))
