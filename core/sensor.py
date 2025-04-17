@@ -6,7 +6,6 @@ from utils import geometry
 from transducer import Focused, Planewave, Transducer
 
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 
 class Sensor: # sensor points are represented in global coordinate space for this class
 
