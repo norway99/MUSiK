@@ -6,6 +6,7 @@ import multiprocessing
 from queue import Empty
 import time
 import tqdm
+from dataclasses import dataclass, field
 
 from utils import utils
 from phantom import Phantom
@@ -18,13 +19,17 @@ from matplotlib import pyplot as plt
 SENTINEL = "sentinel"
 
 
+@dataclass
 class Results:
-    def __init__(
-        self,
-        results_path=None,
-    ):
-        self.result_paths = sorted(glob.glob(results_path + "/signal_*.np?"))
-        self.other_signal_paths = sorted(glob.glob(results_path + "/key_signal*.np?"))
+    results_path: str = None
+    result_paths: list = field(init=False)
+    other_signal_paths: list = field(init=False)
+    length: int = field(init=False)
+    result_shape: tuple = field(init=False)
+
+    def __post_init__(self):
+        self.result_paths = sorted(glob.glob(self.results_path + "/signal_*.np?"))
+        self.other_signal_paths = sorted(glob.glob(self.results_path + "/key_signal*.np?"))
         self.length = len(self.result_paths)
         if self.length == 0:
             self.result_shape = None
@@ -43,75 +48,56 @@ class Results:
             return data[0], data[1:], other_data
         return data[0], data[1:]
 
-    def indices(
-        self,
-    ):
+    def indices(self):
         indices = []
         for path in self.result_paths:
             indices.append(int(re.findall(r"\d+", os.path.basename(path))[0]))
         return indices
 
 
+@dataclass
 class Experiment:
-    def __init__(
-        self,
-        simulation_path=None,
-        sim_properties=None,
-        phantom=None,
-        transducer_set=None,
-        sensor=None,
-        nodes=None,
-        results=None,
-        indices=None,
-        gpu=True,
-        workers=2,
-        additional_keys=[],
-        repeat=None,
-    ):
-        if simulation_path is None:
-            simulation_path = os.path.join(os.getcwd(), "experiment")
-            os.makedirs(simulation_path, exist_ok=True)
-            self.simulation_path = simulation_path
-        else:
-            self.simulation_path = simulation_path
+    simulation_path: str = None
+    sim_properties: SimProperties = None
+    phantom: Phantom = None
+    transducer_set: TransducerSet = None
+    sensor: Sensor = None
+    nodes: int = None
+    results: Results = None
+    indices: list = None
+    gpu: bool = True
+    workers: int = 2
+    additional_keys: list = field(default_factory=list)
+    repeat: int = None
 
-        self.sim_properties = sim_properties
-        self.phantom = phantom
-        self.transducer_set = transducer_set
-        self.sensor = sensor
-        self.nodes = nodes
-        self.gpu = gpu
-        self.repeat = repeat
-        if workers is not None and workers > 3:
+    def __post_init__(self):
+        if self.simulation_path is None:
+            self.simulation_path = os.path.join(os.getcwd(), "experiment")
+            os.makedirs(self.simulation_path, exist_ok=True)
+        if self.workers is not None and self.workers > 3:
             print(
                 "workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime"
             )
-        slurm_cpus = os.getenv(
-            "SLURM_CPUS_PER_TASK"
-        )  # Check to see if we are in a slurm computing environment to avoid oversubscription
+        slurm_cpus = os.getenv("SLURM_CPUS_PER_TASK")
         if slurm_cpus is not None:
             print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
             num_cpus = int(slurm_cpus)
-            if num_cpus < workers:
-                workers = num_cpus
+            if num_cpus < self.workers:
+                self.workers = num_cpus
             self.repeat = -1
             print(f"Setting repeat to -1 to avoid asynchronous index allocation")
-        self.workers = workers
-
-        os.makedirs(os.path.join(simulation_path, f"results"), exist_ok=True)
+        os.makedirs(os.path.join(self.simulation_path, f"results"), exist_ok=True)
         self.add_results()
-        self.indices = self.indices_to_run(indices)
-        self.additional_keys = self.check_added_keys(additional_keys)
+        self.indices = self.indices_to_run(self.indices)
+        self.additional_keys = self.check_added_keys(self.additional_keys)
 
     def __len__(self):
         if self.transducer_set is None:
             return 0
-        return sum(
-            [
-                transducer.get_num_rays()
-                for transducer in self.transducer_set.transmit_transducers()
-            ]
-        )
+        return sum([
+            transducer.get_num_rays()
+            for transducer in self.transducer_set.transmit_transducers()
+        ])
 
     # save experiment
     def save(self, filepath=None):
@@ -412,11 +398,11 @@ class Experiment:
                 (
                     np.zeros_like(
                         global_mask[tuple(index)]
-                    ),  # global_mask[tuple(index)]*255,
+                    ),
                     global_mask[tuple(index)]
-                    * 255,  # np.zeros_like(global_mask[tuple(index)]),
+                    * 255,
                     global_mask[tuple(index)]
-                    * 255,  # np.zeros_like(global_mask[tuple(index)]),
+                    * 255,
                     global_mask[tuple(index)] * 255,
                 ),
                 axis=-1,
