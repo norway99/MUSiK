@@ -7,69 +7,78 @@ from utils import utils
 from utils import geometry
 from tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
+from dataclasses import dataclass, field
+from typing import Dict, Tuple, Optional, Any, Union, List, Callable
 
 # phantom bounds in global coords are NOT necessarily -1 to 1
 
 
+@dataclass
 class Phantom:
     """
-    A class representing a phantom for simulating ultrasound imaging.
+    A dataclass representing a phantom for simulating ultrasound imaging.
 
     Attributes:
-    - source_path (str): The path to the source directory containing the phantom data.
-    - voxel_dims (tuple): The dimensions of each voxel in the phantom, in meters.
-    - matrix_dims (tuple): The dimensions of the phantom matrix.
-    - seed (int): The seed for the random number generator used to generate the phantom.
-    - rng (numpy.random.Generator): The random number generator used to generate the phantom.
-    - mask (numpy.ndarray): A 3D array representing the phantom mask.
-    - tissues (dict): A dictionary of Tissue objects representing the different types of tissue in the phantom.
+        voxel_dims: The dimensions of each voxel in the phantom, in meters.
+        matrix_dims: The dimensions of the phantom matrix.
+        baseline: Tuple of baseline sound speed and density values.
+        seed: The seed for the random number generator used to generate the phantom.
+        from_mask: Whether the phantom was created from a mask.
+        mask: A 3D array representing the phantom mask.
+        tissues: A dictionary of Tissue objects representing the different types of tissue in the phantom.
+        complete: The complete phantom representation.
+        default_tissue: The default tissue label.
+        rng: The random number generator used to generate the phantom.
 
     Methods:
-    - save(filepath): Saves the phantom to the specified file path.
-    - load(source_path): Loads the phantom from the specified source directory.
-    - create_from_image(): Sets the phantom mask and estimates the tissues from a Hounsfield unit-scaled image.
-    - create_from_list(): Sets the phantom mask and reads the tissues by supplying a list of shapes and corresponding tissues.
-    - add_tissue(tissue): Adds a tissue to the phantom.
-    - remove_tissue(tissue): Removes a tissue from the phantom.
-    - add_tissue_sphere(centroid, radius, tissue): Adds a spherical region of tissue to the phantom.
-    - get_tissues(): Returns a dictionary of the different types of tissue in the phantom.
-    - get_tissue_mask(): Returns a mask containing only tissues of a particular type.
-    - get_mask(): Returns the phantom mask.
-    - get_dimensions(): Returns the dimensions of the phantom matrix.
-    - get_voxel_dims(): Returns the dimensions of each voxel in the phantom, in meters.
-    - generate_tissue(tissue, rand_like=None, order=1): Generates a 3D array representing a tissue in the phantom.
-    - get_complete(): Returns a 3D array representing the complete phantom.
-    - render(): Renders the phantom.
+        save(filepath): Saves the phantom to the specified file path.
+        load(source_path): Loads the phantom from the specified source directory.
+        create_from_image(): Sets the phantom mask and estimates the tissues from a Hounsfield unit-scaled image.
+        create_from_list(): Sets the phantom mask and reads the tissues by supplying a list of shapes and corresponding tissues.
+        add_tissue(tissue): Adds a tissue to the phantom.
+        remove_tissue(tissue): Removes a tissue from the phantom.
+        add_tissue_sphere(centroid, radius, tissue): Adds a spherical region of tissue to the phantom.
+        get_tissues(): Returns a dictionary of the different types of tissue in the phantom.
+        get_tissue_mask(): Returns a mask containing only tissues of a particular type.
+        get_mask(): Returns the phantom mask.
+        get_dimensions(): Returns the dimensions of the phantom matrix.
+        get_voxel_dims(): Returns the dimensions of each voxel in the phantom, in meters.
+        generate_tissue(tissue, rand_like=None, order=1): Generates a 3D array representing a tissue in the phantom.
+        get_complete(): Returns a 3D array representing the complete phantom.
+        render(): Renders the phantom.
     """
 
-    def __init__(
-        self,
-        source_path=None,
-        voxel_dims=(1e-3, 1e-3, 1e-3),
-        matrix_dims=(256, 256, 256),
-        baseline=(1500, 1000),
-        seed=None,
-        from_mask=True,
-    ):
-        # initialize from source if exists
-        if source_path is not None:
-            self.load(source_path)
-            return 1
+    voxel_dims: np.ndarray = field(default_factory=lambda: np.array((1e-3, 1e-3, 1e-3)))
+    matrix_dims: np.ndarray = field(default_factory=lambda: np.array((256, 256, 256)))
+    baseline: Tuple[float, float] = (1500, 1000)
+    seed: Optional[int] = None
+    from_mask: bool = True
+    mask: np.ndarray = field(init=False)
+    tissues: Dict[str, Tissue] = field(default_factory=dict, init=False)
+    complete: Optional[np.ndarray] = field(default=None, init=False)
+    default_tissue: int = field(default=0, init=False)
+    rng: np.random.Generator = field(init=False)
 
-        # otherwise initialize empty water phantom
-        self.seed = seed
-        self.rng = np.random.default_rng(seed)
-        self.voxel_dims = np.array(voxel_dims)
-        self.mask = np.zeros(matrix_dims, dtype=np.float32)
-        # self.anisotropy = np.ones((3, matrix_dims[0], matrix_dims[1], matrix_dims[2]), dtype = np.float32)
+    def __post_init__(self):
+        """Initialize fields after the dataclass initialization."""
+        # Initialize random number generator
+        self.rng = np.random.default_rng(self.seed)
+        
+        # Initialize mask
+        self.mask = np.zeros(self.matrix_dims, dtype=np.float32)
+        
+        # Initialize tissues dictionary with water as default
         self.tissues = {
             "water": Tissue(name="water", label=0, c=1500, rho=1000, sigma=0, scale=0.1)
         }
-        self.matrix_dims = np.array(matrix_dims)
-        self.baseline = baseline
-        self.from_mask = from_mask
-        self.complete = None
-        self.default_tissue = 0
+
+    @classmethod
+    def from_source(cls, source_path):
+        """Create a phantom instance from a source directory."""
+        phantom = cls()
+        if source_path is not None:
+            phantom.load(source_path)
+        return phantom
 
     # save phantom to source dir containing tissues, mask, and source
     def save(self, filepath):
