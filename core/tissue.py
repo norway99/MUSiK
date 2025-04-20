@@ -25,35 +25,36 @@ class Tissue:
         Loads the tissue attributes from a JSON file.
     """
 
-    def __init__(self, 
-                 name=None, 
-                 c=1540, 
-                 rho=1000,
-                 sigma=1, 
-                 scale=0.1, 
-                 label=None,):
-                #  anisotropy=(1,1,1),):
+    def __init__(
+        self,
+        name=None,
+        c=1540,
+        rho=1000,
+        sigma=1,
+        scale=0.1,
+        label=None,
+    ):
+        #  anisotropy=(1,1,1),):
 
         self.name = name
         self.c = c
         self.rho = rho
         self.sigma = sigma
-        self.scale = scale # [s1, s2, s3, ...]
+        self.scale = scale  # [s1, s2, s3, ...]
         self.label = label
         # self.anisotropy = anisotropy # Tissue anisotropy is fairly complex to implement
-	
- 
-    def save(self,):
+
+    def save(
+        self,
+    ):
         return self.__dict__
-	
- 
+
     def load(self, dictionary):
-        self.name = dictionary['name']
-        self.c = dictionary['c']
-        self.rho = dictionary['rho']
-        self.sigma = dictionary['sigma']
-        self.scale = dictionary['scale']
-        self.label = dictionary['label']
+        self.name = dictionary["name"]
+        self.c = dictionary["c"]
+        self.rho = dictionary["rho"]
+        self.sigma = dictionary["sigma"]
+        self.scale = dictionary["scale"]
+        self.label = dictionary["label"]
         # self.anisotropy = dictionary['anisotropy']
         return self
-        
