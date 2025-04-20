@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from contextlib import contextmanager
 import shutil
 import glob
+from dataclasses import dataclass, field
+from typing import Tuple, List, Union, Optional
 
 import sys
 from utils import utils
@@ -35,43 +37,39 @@ def tempdir():
             sys.stderr.write("Failed to clean up temp dir at {}".format(path))
 
 
+@dataclass
 class SimProperties:
-    def __init__(
-        self,
-        grid_size=(
-            128e-3,
-            32e-3,
-            32e-3,
-        ),  # simulation grid size now provided in units of meters [m]
-        voxel_size=(
-            0.1e-3,
-            0.1e-3,
-            0.1e-3,
-        ),  # simulation voxel size provided independent of phantom size
-        PML_size=(32, 8, 8),  # PML still provided as a voxel padding
-        PML_alpha=2,
-        t_end=2e-5,  # [s]
-        bona=6,  # parameter b/a determining degree of nonlinear acoustic effects
-        alpha_coeff=0.75,  # [dB/(MHz^y cm)]
-        alpha_power=1.5,  # attenuation power scaling
-        grid_lambda=2,  # multiple of nyquist limit for voxel size
-    ):
-        # Set time and voxel size dynamically - time based on grid length
-        self.grid_size = np.array(grid_size)
-        self.voxel_size = np.array(voxel_size)
-        self.PML_size = np.array(PML_size)
-        self.PML_alpha = PML_alpha
-        self.t_end = t_end
-        self.bona = bona
-        self.alpha_coeff = alpha_coeff
-        self.alpha_power = alpha_power
+    """
+    Simulation properties for acoustic wave propagation simulations.
+    
+    This class defines the physical and computational parameters for k-Wave simulations,
+    including grid dimensions, voxel sizes, PML (Perfectly Matched Layer) settings,
+    and acoustic medium properties. It also provides methods for optimizing simulation
+    parameters based on acoustic frequency and automatically calculating appropriate
+    matrix sizes for efficient computation using FFT-based methods.
+    """
+    grid_size: Tuple[float, float, float] = (128e-3, 32e-3, 32e-3)  # simulation grid size in meters [m]
+    voxel_size: Tuple[float, float, float] = (0.1e-3, 0.1e-3, 0.1e-3)  # simulation voxel size in meters [m]
+    PML_size: Tuple[int, int, int] = (32, 8, 8)  # PML padding in voxels
+    PML_alpha: float = 2  # PML absorption coefficient
+    t_end: float = 2e-5  # simulation end time [s]
+    bona: float = 6  # parameter b/a determining degree of nonlinear acoustic effects
+    alpha_coeff: float = 0.75  # attenuation coefficient [dB/(MHz^y cm)]
+    alpha_power: float = 1.5  # attenuation power scaling
+    grid_lambda: float = 2  # multiple of nyquist limit for voxel size
+    matrix_size: np.ndarray = field(init=False)  # computed grid dimensions in voxels
+    bounds: np.ndarray = field(init=False)  # computed bounding vertices
+
+    def __post_init__(self):
+        self.grid_size = np.array(self.grid_size)
+        self.voxel_size = np.array(self.voxel_size)
+        self.PML_size = np.array(self.PML_size)
         self.matrix_size = self.calc_matrix_size(
             self.grid_size, self.voxel_size, self.PML_size
         )
         self.bounds = self.calc_bounding_vertices(
-            self.matrix_size, PML_size, self.voxel_size
+            self.matrix_size, self.PML_size, self.voxel_size
         )
-        self.grid_lambda = grid_lambda
 
     def save(self, filepath):
         utils.dict_to_json(self.__dict__, filepath)
