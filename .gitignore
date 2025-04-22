@@ -2,7 +2,6 @@
 *~
 *.o
 *.asv
-*.png
 *.mat
 *.jpg
 *.pdf
@@ -31,7 +30,6 @@ __pycache__
 *simulations
 *.dcm
 *.vox
-*.ply
 *.blend
 *.blend1
 *.mtl
