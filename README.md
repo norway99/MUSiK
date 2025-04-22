@@ -75,6 +75,55 @@ This notebook will guide you through:
 - **Experiment**: Coordinate all components and manage the simulation workflow
 - **Reconstruction**: Process simulation results to create images
 
+## Running Multi-GPU Simulations
+
+MUSiK supports distributing simulation workloads across multiple GPUs on a single node or local workstation, which can significantly reduce computation time for large experiments.
+
+1. First, prepare your experiment as you would for any simulation:
+```python
+my_experiment = experiment.Experiment(
+    simulation_path = 'my_simulation',
+    sim_properties = my_simprops,
+    phantom = my_phantom,
+    transducer_set = my_transducer_set,
+    sensor = my_sensor,
+    nodes = N,  # Set N to the number of GPUs you want to use
+    workers = 3,  # Number of CPU workers per GPU
+    additional_keys = []
+)
+my_experiment.save()
+```
+
+2. To run the simulation across multiple GPUs, you can use the provided `run_multi_gpu.sh` script:
+```bash
+cd run
+bash run_multi_gpu.sh my_simulation 4 3
+```
+
+Where:
+- The first argument is the path to your saved experiment
+- The second argument is the number of GPUs to use
+- The third argument is the number of CPU workers per GPU (optional, defaults to 3)
+
+This script will automatically launch the simulation across all specified GPUs, distributing the workload appropriately.
+
+3. For manual control, you can also directly use the parallel.py script for each GPU:
+```bash
+# For GPU 0
+python run/parallel.py -p my_simulation -n 0 -s 4 -g 1 -r 1 -w 3 &
+
+# For GPU 1
+python run/parallel.py -p my_simulation -n 1 -s 4 -g 1 -r 1 -w 3 &
+```
+
+Where:
+- `-p, --path`: Path to the saved experiment directory
+- `-n, --node`: The GPU index to use for this process
+- `-s, --nodes`: Total number of GPUs to distribute the work across
+- `-g, --gpu`: Whether to use GPU acceleration (1 for yes, 0 for no)
+- `-r, --repeat`: Whether to repeat and overwrite previous results (1 for yes, 0 for no)
+- `-w, --workers`: Number of CPU workers to use per GPU
+
 ## Running SLURM Array Jobs
 
 For larger simulations, MUSiK provides tools to distribute computations across multiple nodes using SLURM:
