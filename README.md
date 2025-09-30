@@ -175,7 +175,10 @@ For questions or assistance, please contact:
 
 ## Citation
 
-A paper describing MUSiK and its applications will be available soon. Citation information will be added when published.
+Please cite the following manuscript:
+```
+Chan TJ, Nair-Kanneganti A, Anthony B, Pouch A. MUSiK: An Open Source Simulation Library for 3D Multi-view Ultrasound. IEEE Trans Biomed Eng. 2025 Sep 4;PP. doi: 10.1109/TBME.2025.3605577. Epub ahead of print. PMID: 40907042.
+```
 
 ## License
 
