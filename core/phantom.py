@@ -61,6 +61,10 @@ class Phantom:
 
     def __post_init__(self):
         """Initialize fields after the dataclass initialization."""
+        # Cast inputs to correct types
+        self.voxel_dims = np.array(self.voxel_dims)
+        self.matrix_dims = np.array(self.matrix_dims, dtype=int)
+        
         # Initialize random number generator
         self.rng = np.random.default_rng(self.seed)
         
@@ -93,7 +97,8 @@ class Phantom:
         dictionary.pop("mask")
         dictionary.pop("tissues")
         dictionary.pop("rng")
-        dictionary.pop("complete")
+        if "complete" in dictionary.keys():
+            dictionary.pop("complete")
         utils.dict_to_json(dict(dictionary), filepath + "/source.json")
 
     # load phantom from source dir
@@ -121,10 +126,13 @@ class Phantom:
 
         phantom.rng = np.random.default_rng(source["seed"])
         phantom.voxel_dims = np.array(source["voxel_dims"])
-        phantom.matrix_dims = np.array(source["matrix_dims"])
+        phantom.matrix_dims = np.array(source["matrix_dims"], dtype=int)
         phantom.from_mask = source["from_mask"]
         phantom.baseline = source["baseline"]
-        phantom.default_tissue = source["default_tissue"]
+        if "default_tissue" in source.keys():
+            phantom.default_tissue = source["default_tissue"]
+        else:
+            phantom.default_tissue = 0
         return phantom
 
     # save tissues to dictionary
