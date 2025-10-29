@@ -14,7 +14,7 @@ from scipy.ndimage import gaussian_filter1d
 from utils import utils
 from utils import geometry
 from transducer import Focused, Planewave
-from .experiment import Experiment
+from .experiment import Experiment, Results
 
 from scipy.signal import hilbert
 
@@ -826,9 +826,20 @@ class Compounding(Reconstruction):
                     0,
                     travel_times,
                 )  # Added a factor of 1.2 to windowing condition
+            
+            # Clip windowed_times to valid indices
+            # Values beyond rf_series length are masked out below
+            windowed_times_clipped = np.clip(windowed_times, 0, len(rf_series) - 1)
+            
+            # Create a mask for valid indices
+            valid_mask = (windowed_times >= 0) & (windowed_times < len(rf_series))
+            
+            # Get RF values and mask to zero out invalid ones
+            rf_values = rf_series[windowed_times_clipped]
+            rf_values = np.where(valid_mask, rf_values, 0.0)
 
             local_image_matrix += (
-                rf_series[windowed_times] * apodizations_precompute / denominator
+                rf_values * apodizations_precompute / denominator
             )
 
         local_image_matrix = np.abs(hilbert(local_image_matrix, axis=0)).astype(
