@@ -7,14 +7,14 @@ MUSiK is a Python library for simulating multi-transducer ultrasound systems usi
 ## Installation
 
 ### Prerequisites
-- Python 3.10 (recommended to avoid dependency conflicts)
+- Python 3.12 (recommended to avoid dependency conflicts)
 - Git
 - GPU with CUDA support (recommended for faster simulations)
 
 ### Clone the Repository
 ```bash
 # Clone the repository with submodules
-git clone --recursive --remote-submodules git@github.com:norway99/MUSiK.git
+git clone --recursive --remote-submodules https://github.com/norway99/MUSiK.git
 
 # Navigate to the cloned directory
 cd MUSiK
@@ -28,7 +28,7 @@ git submodule update --init --recursive --remote
 ### Setting up the Environment
 ```bash
 # Create and activate a new conda environment (recommended)
-conda create -n musik python=3.10
+conda create -n musik python=3.12
 conda activate musik
 
 # Install dependencies
