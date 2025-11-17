@@ -164,7 +164,7 @@ The SLURM job will create an array of tasks, with each task handling a portion o
 
 ## Compiling Custom KWave Binaries
 
-Some computing environments (computing clusters running CentOS for instance) may require a local build of the KWave CUDA binaries. If you build, add the compiled binaries to /k-wave/python/kwave/bin/[yoursystem]/kspaceFirstOrder-CUDA, and make sure to comment out lines 204-205 in /k-wave-python/kwave/__init__.py. (These will attempt to re-download and overwrite your copy.)
+Some computing environments (computing clusters running CentOS for instance) may require a local build of the KWave CUDA binaries. If you build, add the compiled binaries to `/k-wave/python/kwave/bin/[yoursystem]/kspaceFirstOrder-CUDA`, and make sure to comment out lines 204-205 in `/k-wave-python/kwave/__init__.py`. (These will attempt to re-download and overwrite your copy.)
 
 ## Contact
 
