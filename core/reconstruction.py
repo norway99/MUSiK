@@ -10,6 +10,8 @@ from scipy.interpolate import (
     RegularGridInterpolator,
 )
 from scipy.ndimage import gaussian_filter1d
+from dataclasses import dataclass, field
+from typing import Tuple, List, Union, Optional
 
 from utils import utils
 from utils import geometry
@@ -17,6 +19,115 @@ from transducer import Focused, Planewave
 from .experiment import Experiment, Results
 
 from scipy.signal import hilbert
+
+
+@dataclass
+class ReconstructionArgs:
+    """
+    Reconstruction arguments for acoustic image reconstruction.
+    
+    This class defines the parameters for various reconstruction methods,
+    including DAS (Delay and Sum) and compounding techniques. It provides
+    sensible defaults and methods for saving/loading configurations.
+    """
+    # Common parameters for all reconstruction methods
+    workers: int = 8                                    # number of parallel workers
+    bounds: Optional[Union[np.ndarray, list, tuple, float]] = None  # reconstruction bounds
+    matsize: int = 256                                  # matrix size for reconstruction grid
+    dimensions: int = 3                                 # reconstruction dimensions (2 or 3)
+    
+    # DAS specific parameters
+    downsample: float = 1.0                            # downsample factor (0,1]
+    tgc: float = 1.0                                   # time gain compensation factor
+    
+    # Compounding specific parameters
+    resolution_multiplier: float = 1.0                # resolution scaling factor
+    combine: bool = True                               # whether to combine signals
+    pressure_field: Optional[np.ndarray] = None       # pressure field for apodization
+    pressure_field_resolution: Optional[float] = None # pressure field resolution
+    return_local: bool = False                         # return local coordinates
+    attenuation_factor: float = 1.0                   # attenuation compensation factor
+    volumetric: bool = False                           # volumetric reconstruction
+    save_intermediates: bool = False                   # save intermediate results
+    
+    # Preprocessing parameters
+    global_transforms: bool = True                     # use global transforms
+    window_factor: int = 4                             # windowing factor for preprocessing
+    saft: bool = False                                 # synthetic aperture focusing
+    demodulate: bool = False                           # envelope detection
+    gain_compensate: bool = False                      # gain compensation
+    
+    # Plotting parameters
+    scale: float = 5000                                # scaling factor for scatter plots
+    
+    def __post_init__(self):
+        """Validate parameters after initialization."""
+        if self.dimensions not in [2, 3]:
+            raise ValueError("Dimensions must be 2 or 3")
+        if not (0 < self.downsample <= 1):
+            raise ValueError("Downsample must be a float in (0,1]")
+        if self.workers < 1:
+            raise ValueError("Workers must be >= 1")
+        if self.pressure_field is not None and self.pressure_field_resolution is None:
+            raise ValueError("Pressure field resolution must be provided if pressure field is provided")
+    
+    def save(self, filepath: str):
+        """Save reconstruction arguments to JSON file."""
+        # Convert numpy arrays to lists for JSON serialization
+        save_dict = {}
+        for key, value in self.__dict__.items():
+            if isinstance(value, np.ndarray):
+                save_dict[key] = value.tolist()
+            else:
+                save_dict[key] = value
+        utils.dict_to_json(save_dict, filepath)
+    
+    @classmethod
+    def load(cls, filepath: str):
+        """Load reconstruction arguments from JSON file."""
+        dictionary = utils.json_to_dict(filepath)
+        recon_args = cls()
+        for key, value in dictionary.items():
+            if hasattr(recon_args, key):
+                # Convert lists back to numpy arrays for specific fields
+                if key in ['bounds', 'pressure_field'] and value is not None:
+                    setattr(recon_args, key, np.array(value))
+                else:
+                    setattr(recon_args, key, value)
+        return recon_args
+    
+    def get_das_args(self) -> dict:
+        """Get arguments specifically for DAS reconstruction methods."""
+        return {
+            'bounds': self.bounds,
+            'matsize': self.matsize,
+            'dimensions': self.dimensions,
+            'downsample': self.downsample,
+            'workers': self.workers,
+            'tgc': self.tgc
+        }
+    
+    def get_compound_args(self) -> dict:
+        """Get arguments specifically for compounding reconstruction methods."""
+        return {
+            'workers': self.workers,
+            'resolution_multiplier': self.resolution_multiplier,
+            'combine': self.combine,
+            'pressure_field': self.pressure_field,
+            'pressure_field_resolution': self.pressure_field_resolution,
+            'return_local': self.return_local,
+            'attenuation_factor': self.attenuation_factor,
+            'volumetric': self.volumetric,
+            'save_intermediates': self.save_intermediates
+        }
+    
+    def get_preprocess_args(self) -> dict:
+        """Get arguments for data preprocessing."""
+        return {
+            'global_transforms': self.global_transforms,
+            'workers': self.workers,
+            'attenuation_factor': self.attenuation_factor
+        }
 
 
 class Reconstruction:
@@ -125,7 +236,35 @@ class DAS(Reconstruction):
         times = self.results[index][0]
         return times, coords, processed
 
-    def preprocess_data(self, global_transforms=True, workers=8, attenuation_factor=1):
+    def preprocess_data(self, args: Optional[ReconstructionArgs] = None, **kwargs):
+        """
+        Preprocess reconstruction data.
+        
+        Args:
+            args: ReconstructionArgs object containing preprocessing parameters.
+                  If None, will use individual kwargs or defaults.
+            **kwargs: Individual parameter overrides (for backward compatibility)
+        
+        Returns:
+            Tuple of (times, coords, processed) data
+        """
+        # Handle backward compatibility
+        if args is None:
+            # Extract specific parameters from kwargs with defaults
+            global_transforms = kwargs.get('global_transforms', True)
+            workers = kwargs.get('workers', 8)
+            attenuation_factor = kwargs.get('attenuation_factor', 1)
+        else:
+            # Update args with any provided kwargs
+            for key, value in kwargs.items():
+                if hasattr(args, key):
+                    setattr(args, key, value)
+            
+            preprocess_args = args.get_preprocess_args()
+            global_transforms = preprocess_args['global_transforms']
+            workers = preprocess_args['workers']
+            attenuation_factor = preprocess_args['attenuation_factor']
+        
         transducer_count = 0
         transducer, transducer_transform = self.transducer_set[transducer_count]
         running_index_list = np.cumsum(
@@ -164,9 +303,9 @@ class DAS(Reconstruction):
             self.sensor.aperture_type == "transmit_as_receive"
             for i in range(len(self.results))
         ]
-        attenuation_factor = [attenuation_factor for i in range(len(self.results))]
+        attenuation_factor_list = [attenuation_factor for i in range(len(self.results))]
         inputs = list(
-            zip(indices, transducers, transforms, sensor_receive, attenuation_factor)
+            zip(indices, transducers, transforms, sensor_receive, attenuation_factor_list)
         )
 
         if workers > 1:
@@ -191,7 +330,27 @@ class DAS(Reconstruction):
         processed = [r[2] for r in results]
         return times, coords, processed
 
-    def plot_scatter(self, scale=5000, workers=1):
+    def plot_scatter(self, args: Optional[ReconstructionArgs] = None, **kwargs):
+        """
+        Create a scatter plot of the reconstruction data.
+        
+        Args:
+            args: ReconstructionArgs object containing plotting parameters.
+                  If None, will use individual kwargs or defaults.
+            **kwargs: Individual parameter overrides (for backward compatibility)
+        """
+        # Handle backward compatibility
+        if args is None:
+            scale = kwargs.get('scale', 5000)
+            workers = kwargs.get('workers', 1)
+        else:
+            # Update args with any provided kwargs
+            for key, value in kwargs.items():
+                if hasattr(args, key):
+                    setattr(args, key, value)
+            scale = args.scale
+            workers = args.workers
+        
         colorme = lambda x: (
             [1, 0, 0]
             if x % 7 == 0
@@ -240,17 +399,38 @@ class DAS(Reconstruction):
         ax.set_aspect("equal")
 
     def get_image(
-        self, bounds=None, matsize=256, dimensions=3, downsample=1, workers=8, tgc=1
+        self, args: Optional[ReconstructionArgs] = None, **kwargs
     ):
-        assert dimensions in [2, 3], print("Image can be 2 or 3 dimensional")
-        assert downsample > 0 and downsample <= 1, print(
-            "Downsample must be a float on (0,1]"
-        )
+        """
+        Generate a reconstructed image using DAS (Delay and Sum) beamforming.
+        
+        Args:
+            args: ReconstructionArgs object containing reconstruction parameters.
+                  If None, will create default args and update with kwargs.
+            **kwargs: Individual parameter overrides (for backward compatibility)
+        
+        Returns:
+            Reconstructed image as numpy array
+        """
+        # Handle backward compatibility and parameter setup
+        if args is None:
+            args = ReconstructionArgs()
+            
+        # Update args with any provided kwargs
+        for key, value in kwargs.items():
+            if hasattr(args, key):
+                setattr(args, key, value)
+        
+        # Validate arguments
+        args.__post_init__()
+        
+        das_args = args.get_das_args()
+        preprocess_args = args.get_preprocess_args()
+        
+        times, coords, processed = self.preprocess_data(**preprocess_args)
 
-        times, coords, processed = self.preprocess_data(
-            global_transforms=True, workers=workers, attenuation_factor=tgc
-        )
-
+        # Handle bounds setup
+        bounds = das_args['bounds']
         if bounds is None:
             flat_coords = np.concatenate(coords, axis=0).reshape(-1, 3)
             bounds = np.array(
@@ -260,16 +440,15 @@ class DAS(Reconstruction):
                     (np.min(flat_coords[:, 2]), np.max(flat_coords[:, 2])),
                 ]
             )
-        elif (
-            type(bounds) is list or type(bounds) is tuple or type(bounds) is np.ndarray
-        ):
+        elif isinstance(bounds, (list, tuple)):
             bounds = np.array(bounds)
-        elif type(bounds) is float:
+        elif isinstance(bounds, (int, float)):
             bounds = np.array([(-bounds, bounds), (-bounds, bounds), (-bounds, bounds)])
-        else:
-            print("provide bounds as a list, tuple, numpy array, or float")
-            return 0
+        elif not isinstance(bounds, np.ndarray):
+            raise ValueError("bounds must be a list, tuple, numpy array, or float")
 
+        # Calculate grid points
+        matsize = das_args['matsize']
         bounds_avg = (
             bounds[0, 1]
             - bounds[0, 0]
@@ -294,7 +473,7 @@ class DAS(Reconstruction):
             int((bounds[2, 1] - bounds[2, 0]) / bounds_avg * matsize),
         )
 
-        if dimensions == 2:
+        if das_args['dimensions'] == 2:
             X, Y = np.meshgrid(X, Y, indexing="ij")
         else:
             X, Y, Z = np.meshgrid(X, Y, Z, indexing="ij")
@@ -310,16 +489,16 @@ class DAS(Reconstruction):
                 processed[count : int(count + transducer.get_num_rays())], axis=0
             ).reshape(-1)
 
-            if downsample != 1:
+            if das_args['downsample'] != 1:
                 subset_processed = gaussian_filter1d(
                     subset_processed.reshape(-1, transducer.get_num_rays()),
-                    int(1 / downsample),
+                    int(1 / das_args['downsample']),
                     axis=-1,
                 ).reshape(-1)
-                subset_coords = subset_coords[:: int(1 / downsample)]
-                subset_processed = subset_processed[:: int(1 / downsample)]
+                subset_coords = subset_coords[:: int(1 / das_args['downsample'])]
+                subset_processed = subset_processed[:: int(1 / das_args['downsample'])]
 
-            if dimensions == 2:
+            if das_args['dimensions'] == 2:
                 interp = LinearNDInterpolator(subset_coords[:, :2], subset_processed)
                 signals.append(interp(X, Y))
             else:
@@ -477,16 +656,34 @@ class Compounding(Reconstruction):
 
     def compound(
         self,
-        workers=8,
-        resolution_multiplier=1,
-        combine=True,
-        pressure_field=None,
-        pressure_field_resolution=None,
-        return_local=False,
-        attenuation_factor=1,
-        volumetric=False,
-        save_intermediates=False,
+        args: Optional[ReconstructionArgs] = None,
+        **kwargs
     ):
+        """
+        Perform compounding reconstruction.
+        
+        Args:
+            args: ReconstructionArgs object containing reconstruction parameters.
+                  If None, will create default args and update with kwargs.
+            **kwargs: Individual parameter overrides (for backward compatibility)
+        
+        Returns:
+            Reconstructed image or list of images
+        """
+        # Handle backward compatibility and parameter setup
+        if args is None:
+            args = ReconstructionArgs()
+            
+        # Update args with any provided kwargs
+        for key, value in kwargs.items():
+            if hasattr(args, key):
+                setattr(args, key, value)
+        
+        # Validate arguments
+        args.__post_init__()
+        
+        compound_args = args.get_compound_args()
+        
         if isinstance(self.transducer_set[0], Focused):
             # do nothing
             pass
@@ -505,7 +702,7 @@ class Compounding(Reconstruction):
         resolution = (
             max(dt * c0, 2 * c0 / self.transducer_set.get_lowest_frequency())
             / 4
-            / resolution_multiplier
+            / compound_args['resolution_multiplier']
         )  # make sure this works
 
         x = np.arange(
@@ -567,29 +764,29 @@ class Compounding(Reconstruction):
                     dt,
                     element_centroids,
                     resolution,
-                    return_local,
-                    pressure_field,
-                    pressure_field_resolution,
-                    attenuation_factor,
-                    volumetric,
-                    save_intermediates,
+                    compound_args['return_local'],
+                    compound_args['pressure_field'],
+                    compound_args['pressure_field_resolution'],
+                    compound_args['attenuation_factor'],
+                    compound_args['volumetric'],
+                    compound_args['save_intermediates'],
                 )
             )
 
-        if save_intermediates and not os.path.exists(f"{self.simulation_path}/reconstruct"):
+        if compound_args['save_intermediates'] and not os.path.exists(f"{self.simulation_path}/reconstruct"):
             os.makedirs(f"{self.simulation_path}/reconstruct")
 
         print(f"running reconstruction on {len(arguments)} rays")
-        if workers > 1:
-            with multiprocessing.Pool(workers) as p:
-                if not save_intermediates:
+        if compound_args['workers'] > 1:
+            with multiprocessing.Pool(compound_args['workers']) as p:
+                if not compound_args['save_intermediates']:
                     image_matrices = list(
                         p.starmap(self.scanline_reconstruction, arguments)
                     )
                 else:
                     p.starmap(self.scanline_reconstruction, arguments)
         else:
-            if not save_intermediates:
+            if not compound_args['save_intermediates']:
                 image_matrices = []
                 for argument in arguments:
                     image_matrices.append(self.scanline_reconstruction(*argument))
@@ -597,10 +794,10 @@ class Compounding(Reconstruction):
                 for argument in arguments:
                     self.scanline_reconstruction(*argument)
 
-        if save_intermediates:
+        if compound_args['save_intermediates']:
             return 0  # load in intermediate files and save sum
 
-        if combine:
+        if compound_args['combine']:
             return np.sum(np.stack(image_matrices, axis=0), axis=0)
         else:
             return image_matrices
@@ -987,45 +1184,3 @@ class Compounding(Reconstruction):
         else:
             return image_matrices
 
-
-def compute_local_image_matrix_matrix(
-    local_image_matrix,
-    lx,
-    ly,
-    lz,
-    element_centroids,
-    preprocessed_data,
-    transmit_dists,
-    c0,
-    dt,
-    apodizations,
-    denominator,
-    el2el_dists,
-    timedelay,
-):
-    nx, ny, nz = lx.shape
-    flat_apodizations = apodizations.flatten()
-    local_image_matrix_flat = local_image_matrix.flatten()
-    for i in range(element_centroids.shape[0]):
-        centroid = element_centroids[i]
-        rf_series = preprocessed_data[i].flatten()
-
-        # Compute element distances
-        element_dists = np.sqrt(
-            (lx - centroid[0]) ** 2 + (ly - centroid[1]) ** 2 + (lz - centroid[2]) ** 2
-        )
-
-        # Compute travel times
-        travel_times = np.round(
-            (transmit_dists + element_dists + timedelay) / c0 / dt
-        ).astype(np.int32)
-
-        # Window to reduce intra-transducer interference
-        # windowed_times = np.where(transmit_dists + element_dists + timedelay < el2el_dists[i], 0, travel_times)
-        windowed_times = np.clip(travel_times, 0, rf_series.shape[0] - 1).flatten()
-
-        # Update local_image_matrix
-        value = rf_series[windowed_times] * flat_apodizations / denominator
-        local_image_matrix_flat += value
-
-    local_image_matrix += local_image_matrix_flat.reshape(nx, ny, nz)
