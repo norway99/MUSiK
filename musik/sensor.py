@@ -1,8 +1,8 @@
 import numpy as np
-from utils import utils
+from .utils import utils
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, Tuple, Dict, Any, Type
-from core.transducer import Focused
+from .transducer import Focused
 
 
 @dataclass

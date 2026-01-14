@@ -8,11 +8,11 @@ import time
 import tqdm
 from dataclasses import dataclass, field
 
-from utils import utils
-from phantom import Phantom
-from transducer_set import TransducerSet
-from simulation import Simulation, SimProperties
-from sensor import Sensor
+from .utils import utils
+from .phantom import Phantom
+from .transducer_set import TransducerSet
+from .simulation import Simulation, SimProperties
+from .sensor import Sensor
 
 from matplotlib import pyplot as plt
 

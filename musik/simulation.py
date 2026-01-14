@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import Tuple, List, Union, Optional
 
 import sys
-from utils import utils
-from utils import geometry
+from .utils import utils
+from .utils import geometry
 
 import kwave
 import kwave.kmedium

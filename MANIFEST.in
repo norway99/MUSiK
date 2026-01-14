@@ -1,0 +1,43 @@
+# Include the README and license files
+include README.md
+include LICENSE
+include requirements.txt
+include troubleshooting.md
+
+# Include the figures directory
+recursive-include figures *.png *.jpg *.jpeg *.gif *.svg
+
+# Include assets directory (phantom data)
+recursive-include assets *.obj *.ply *.txt
+
+# Include demo notebooks and scripts
+recursive-include demos *.ipynb *.py *.json *.md
+
+# Include run scripts
+recursive-include run *.py *.sh
+
+# Include k-wave-python submodule (if needed)
+recursive-include k-wave-python *.py *.txt *.md *.yml *.yaml *.toml *.cfg *.ini
+
+# Exclude compiled Python files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude *.so
+global-exclude .DS_Store
+
+# Exclude version control files
+global-exclude .git*
+global-exclude .svn*
+
+# Exclude IDE files
+global-exclude .vscode
+global-exclude .idea
+global-exclude *.swp
+global-exclude *.swo
+
+# Exclude build artifacts
+global-exclude build
+global-exclude dist
+global-exclude *.egg-info

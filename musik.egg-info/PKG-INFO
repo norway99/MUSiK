@@ -1,0 +1,271 @@
+Metadata-Version: 2.4
+Name: musik
+Version: 0.1.0
+Summary: Multi-transducer Ultrasound Simulations in K-wave
+Home-page: https://github.com/norway99/MUSiK
+Author: Trevor Chan, Aparna Nair-kanneganti
+Author-email: tjchan@seas.upenn.edu
+Project-URL: Bug Reports, https://github.com/norway99/MUSiK/issues
+Project-URL: Source, https://github.com/norway99/MUSiK
+Project-URL: Documentation, https://github.com/norway99/MUSiK/blob/main/README.md
+Keywords: ultrasound simulation k-wave medical imaging acoustics
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Scientific/Engineering :: Medical Science Apps.
+Classifier: Topic :: Scientific/Engineering :: Physics
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=2.3.5
+Requires-Dist: scipy>=1.16.0
+Requires-Dist: matplotlib>=3.10.0
+Requires-Dist: h5py>=3.15.0
+Requires-Dist: pillow>=12.0.0
+Requires-Dist: mrcfile>=1.5.0
+Requires-Dist: tqdm>=4.67.0
+Requires-Dist: beartype>=0.22.0
+Requires-Dist: jaxtyping>=0.3.0
+Requires-Dist: deprecated>=1.3.0
+Requires-Dist: einops==0.8.0
+Requires-Dist: natsort==8.4.0
+Requires-Dist: plotly==6.4.0
+Requires-Dist: scikit-image==0.25.2
+Requires-Dist: scikit-learn==1.7.2
+Requires-Dist: numba==0.62.1
+Requires-Dist: contourpy>=1.3.0
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: flake8; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: sphinx; extra == "docs"
+Requires-Dist: sphinx-rtd-theme; extra == "docs"
+Provides-Extra: full
+Requires-Dist: imageio>=2.33.0; extra == "full"
+Requires-Dist: json5>=0.9.14; extra == "full"
+Requires-Dist: meshlib>=2.4.1.114; extra == "full"
+Requires-Dist: nptyping>=2.5.0; extra == "full"
+Requires-Dist: open3d>=0.18.0; extra == "full"
+Requires-Dist: ordered-set>=4.0.2; extra == "full"
+Requires-Dist: pandas>=2.1.3; extra == "full"
+Requires-Dist: pydicom>=2.4.4; extra == "full"
+Requires-Dist: pyquaternion>=0.9.9; extra == "full"
+Requires-Dist: PyWavelets>=1.5.0; extra == "full"
+Requires-Dist: tifffile>=2023.9.26; extra == "full"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license-file
+Dynamic: project-url
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# MUSiK: Multi-transducer Ultrasound Simulations in K-wave
+
+![MUSiK Framework](figures/musik.png)
+
+MUSiK is a Python library for simulating multi-transducer ultrasound systems using the k-Wave toolbox. It provides tools for creating phantoms, configuring transducers, running simulations, and processing results.
+
+## Installation
+
+### Prerequisites
+- Python 3.12 (recommended to avoid dependency conflicts)
+- Git
+- GPU with CUDA support (recommended for faster simulations)
+
+### Clone the Repository
+```bash
+# Clone the repository with submodules
+git clone --recursive --remote-submodules https://github.com/norway99/MUSiK.git
+
+# Navigate to the cloned directory
+cd MUSiK
+```
+
+If you already cloned the repository without the `--recursive` flag, you can initialize the submodules with:
+```bash
+git submodule update --init --recursive --remote
+```
+
+### Setting up the Environment
+```bash
+# Create and activate a new conda environment (recommended)
+conda create -n musik python=3.12
+conda activate musik
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+#### Note on k-wave-python
+The k-wave-python package is included as a submodule in this repository. Alternatively, you can install it directly with pip:
+```bash
+pip install k-wave-python
+```
+
+**Important**: When running k-wave for the first time, it needs to download some binaries which may cause issues in computing environments without internet access (e.g., HPC compute nodes). If necessary, prepare your environment by running a simple k-wave script on a node with internet access before running your full simulations. (this should happen automatically by running the start_here demo.)
+
+## Getting Started
+
+### Running the Introductory Demo
+The repository includes an introductory demo that demonstrates the basic functionality of MUSiK:
+
+1. Navigate to the demos/start_here directory:
+```bash
+cd demos/start_here
+```
+
+2. Open and run the intro_demo.ipynb notebook using Jupyter:
+```bash
+jupyter notebook intro_demo.ipynb
+```
+
+This notebook will guide you through:
+- Creating a simple phantom with different tissue types
+- Setting up a focused transducer
+- Configuring simulation properties
+- Running the ultrasound simulation
+- Processing and visualizing the results
+
+### Key Components
+
+- **Phantom**: Define the geometry and material properties of the medium
+- **Tissue**: Define acoustic properties of different materials
+- **Transducer**: Configure ultrasound transducer specifications
+- **TransducerSet**: Manage multiple transducers for complex setups
+- **Sensor**: Define how signals are captured
+- **Experiment**: Coordinate all components and manage the simulation workflow
+- **Reconstruction**: Process simulation results to create images
+
+## Running Multi-GPU Simulations
+
+MUSiK supports distributing simulation workloads across multiple GPUs on a single node or local workstation, which can significantly reduce computation time for large experiments.
+
+1. First, prepare your experiment as you would for any simulation:
+```python
+my_experiment = experiment.Experiment(
+    simulation_path = 'my_simulation',
+    sim_properties = my_simprops,
+    phantom = my_phantom,
+    transducer_set = my_transducer_set,
+    sensor = my_sensor,
+    nodes = N,  # Set N to the number of GPUs you want to use
+    workers = 3,  # Number of CPU workers per GPU
+    additional_keys = []
+)
+my_experiment.save()
+```
+
+2. To run the simulation across multiple GPUs, you can use the provided `run_multi_gpu.sh` script:
+```bash
+cd run
+bash run_multi_gpu.sh my_simulation 4 3
+```
+
+Where:
+- The first argument is the path to your saved experiment
+- The second argument is the number of GPUs to use
+- The third argument is the number of CPU workers per GPU (optional, defaults to 3)
+
+This script will automatically launch the simulation across all specified GPUs, distributing the workload appropriately.
+
+3. For manual control, you can also directly use the parallel.py script for each GPU:
+```bash
+# For GPU 0
+python run/parallel.py -p my_simulation -n 0 -s 4 -g 1 -r 1 -w 3 &
+
+# For GPU 1
+python run/parallel.py -p my_simulation -n 1 -s 4 -g 1 -r 1 -w 3 &
+```
+
+Where:
+- `-p, --path`: Path to the saved experiment directory
+- `-n, --node`: The GPU index to use for this process
+- `-s, --nodes`: Total number of GPUs to distribute the work across
+- `-g, --gpu`: Whether to use GPU acceleration (1 for yes, 0 for no)
+- `-r, --repeat`: Whether to repeat and overwrite previous results (1 for yes, 0 for no)
+- `-w, --workers`: Number of CPU workers to use per GPU
+
+## Running SLURM Array Jobs
+
+For larger simulations, MUSiK provides tools to distribute computations across multiple nodes using SLURM:
+
+1. Prepare your experiment by creating and saving an Experiment object:
+```python
+my_experiment = experiment.Experiment(
+    simulation_path = 'my_simulation',
+    sim_properties = my_simprops,
+    phantom = my_phantom,
+    transducer_set = my_transducer_set,
+    sensor = my_sensor,
+    nodes = 16,  # Number of nodes to distribute the work
+    workers = 3,  # Number of CPU workers per node
+    additional_keys = []
+)
+my_experiment.save()
+```
+
+2. Use the provided run.sh script to submit a SLURM job array:
+```bash
+cd run
+bash run.sh --job-name my_simulation --output outputs/my_simulation_%A_%a.out --dir path/to/experiment/directory --nodes 16 --workers 3 --cuda 1 --time "2-00" --mem "64G" --repeat 0
+```
+
+Parameters:
+- `--job-name`: Name for the SLURM job
+- `--dir`: Path to the directory containing the saved experiment
+- `--nodes`: Number of nodes to distribute the work (should match the experiment configuration)
+- `--workers`: Number of CPU workers per node
+- `--cuda`: Whether to use GPU acceleration (1 for yes, 0 for no)
+- `--time`: Maximum job time in the format "days-hours"
+- `--mem`: Memory allocation per GPU
+- `--repeat`: Whether to repeat and overwrite previous results (1 for yes, 0 for no)
+- `--output`: Path pattern for output logs
+
+The SLURM job will create an array of tasks, with each task handling a portion of the simulation workload.
+
+## Compiling Custom KWave Binaries
+
+Some computing environments (computing clusters running CentOS for instance) may require a local build of the KWave CUDA binaries. If you build, add the compiled binaries to `/k-wave/python/kwave/bin/[yoursystem]/kspaceFirstOrder-CUDA`, and make sure to comment out lines 204-205 in `/k-wave-python/kwave/__init__.py`. (These will attempt to re-download and overwrite your copy.)
+
+## Contact
+
+For questions or assistance, please contact:
+- Trevor Chan (tjchan@seas.upenn.edu)
+- Aparna Nair-kanneganti
+
+## Issues and Contributions
+
+- For bug reports or feature requests, please open an issue on GitHub!
+- Pull requests are welcome for code improvements or additional features!
+
+## Citation
+
+Please cite the following manuscript:
+```
+Chan TJ, Nair-Kanneganti A, Anthony B, Pouch A. MUSiK: An Open Source Simulation Library for 3D Multi-view Ultrasound. IEEE Trans Biomed Eng. 2025 Sep 4;PP. doi: 10.1109/TBME.2025.3605577. Epub ahead of print. PMID: 40907042.
+```
+
+## License
+
+This project is licensed under the terms included in the LICENSE file.
+
+

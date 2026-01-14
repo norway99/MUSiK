@@ -11,9 +11,9 @@ from scipy.interpolate import (
 )
 from scipy.ndimage import gaussian_filter1d
 
-from utils import utils
-from utils import geometry
-from transducer import Focused, Planewave
+from .utils import utils
+from .utils import geometry
+from .transducer import Focused, Planewave
 from .experiment import Experiment, Results
 
 from scipy.signal import hilbert
