@@ -18,6 +18,13 @@ git clone --recursive --remote-submodules https://github.com/norway99/MUSiK.git
 
 # Navigate to the cloned directory
 cd MUSiK
+
+# Create and activate a new conda environment (recommended)
+conda create -n musik python=3.12
+conda activate musik
+
+# Install in development mode
+pip install -e .
 ```
 
 If you already cloned the repository without the `--recursive` flag, you can initialize the submodules with:
@@ -25,15 +32,7 @@ If you already cloned the repository without the `--recursive` flag, you can ini
 git submodule update --init --recursive --remote
 ```
 
-### Setting up the Environment
-```bash
-# Create and activate a new conda environment (recommended)
-conda create -n musik python=3.12
-conda activate musik
 
-# Install dependencies
-pip install -r requirements.txt
-```
 
 #### Note on k-wave-python
 The k-wave-python package is included as a submodule in this repository. Alternatively, you can install it directly with pip:
@@ -44,6 +43,23 @@ pip install k-wave-python
 **Important**: When running k-wave for the first time, it needs to download some binaries which may cause issues in computing environments without internet access (e.g., HPC compute nodes). If necessary, prepare your environment by running a simple k-wave script on a node with internet access before running your full simulations. (this should happen automatically by running the start_here demo.)
 
 ## Getting Started
+
+### Quick Start with Python
+Once installed, you can import and use MUSiK in your Python scripts:
+
+```python
+import musik
+from musik import phantom, tissue, transducer, experiment
+
+# Create a simple phantom
+my_phantom = phantom.Phantom(...)
+
+# Set up a transducer
+my_transducer = transducer.Focused(...)
+
+# Run a simulation
+my_experiment = experiment.Experiment(...)
+```
 
 ### Running the Introductory Demo
 The repository includes an introductory demo that demonstrates the basic functionality of MUSiK:
@@ -81,6 +97,8 @@ MUSiK supports distributing simulation workloads across multiple GPUs on a singl
 
 1. First, prepare your experiment as you would for any simulation:
 ```python
+from musik import experiment
+
 my_experiment = experiment.Experiment(
     simulation_path = 'my_simulation',
     sim_properties = my_simprops,
@@ -130,6 +148,8 @@ For larger simulations, MUSiK provides tools to distribute computations across m
 
 1. Prepare your experiment by creating and saving an Experiment object:
 ```python
+from musik import experiment
+
 my_experiment = experiment.Experiment(
     simulation_path = 'my_simulation',
     sim_properties = my_simprops,
