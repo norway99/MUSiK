@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import utils
-from utils import geometry
-from transducer import Transducer, Focused, Planewave
+from .utils import utils
+from .utils import geometry
+from .transducer import Transducer, Focused, Planewave
 
 
 class TransducerSet:
