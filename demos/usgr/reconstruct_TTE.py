@@ -8,19 +8,19 @@ import numpy as np
 # import open3d as o3d
 import matplotlib.pyplot as plt
 
-from core import *
+from musik import *
 
 from utils import geometry
 
 
-test_experiment = experiment.Experiment.load('/data/trevor/overflow/test_all_at_center')
+test_experiment = experiment.Experiment.load('/data/trevor/usgr/simulations_raw/TTE_5k')
 test_experiment.run(dry=True)
 
 test_reconstruction = reconstruction.DAS(experiment=test_experiment)
 
 signals = test_reconstruction.get_signals(
-    dimensions=2, matsize=512, downsample=1, workers=32, tgc=10
+    dimensions=2, matsize=256, downsample=1, workers=8, tgc=10, save_dir='/data/trevor/usgr/simulations_raw/TTE_5k/result_recon'
 )
 
-# Save raw signals as npz files:
-np.savez('/data/trevor/overflow/test_all_at_center/signals.npz', signals=signals)
+# # Save raw signals as npz files:
+# np.savez('/data/trevor/usgr/simulations_raw/TTE_5k/signals.npz', signals=signals)
