@@ -154,14 +154,29 @@ class DAS(Reconstruction):
             If save_dir is None, returns three lists.
             If save_dir is provided, returns path to save directory.
         """
-        transducer_count = 0
-        transducer, transducer_transform = self.transducer_set[transducer_count]
         running_index_list = np.cumsum(
             [
                 transducer.get_num_rays()
                 for transducer in self.transducer_set.transmit_transducers()
             ]
         )
+        total_results = len(self.results)
+        sensor_is_transmit_as_receive = self.sensor.aperture_type == "transmit_as_receive"
+
+        # Helper to get transducer info for a given index
+        def get_transducer_for_index(index, transducer_count, transducer, transducer_transform):
+            while transducer_count < len(running_index_list) - 1 and index > running_index_list[transducer_count] - 1:
+                transducer_count += 1
+                transducer, transducer_transform = self.transducer_set[transducer_count]
+            return transducer_count, transducer, transducer_transform
+
+        # Helper to get transform for a given index
+        def get_transform(index, transducer, transducer_transform, transducer_count):
+            local_index = index - (running_index_list[transducer_count - 1] if transducer_count > 0 else 0)
+            if global_transforms:
+                return transducer_transform * transducer.ray_transforms[local_index]
+            else:
+                return transducer.ray_transforms[local_index]
 
         # Setup for incremental saving
         start_index = 0
@@ -184,66 +199,105 @@ class DAS(Reconstruction):
                     if start_index > 0:
                         print(f"Resuming from index {start_index} (found {len(existing_files)} existing batches)")
 
-        indices = []
-        transducers = []
-        transforms = []
-        transmit_as_receive = []
+        # Debug helper for memory tracking
+        def debug_memory(label):
+            import gc
+            gc.collect()
+            try:
+                import psutil
+                process = psutil.Process()
+                mem_info = process.memory_info()
+                print(f"[DEBUG {label}] RSS: {mem_info.rss / 1024**3:.2f} GB, VMS: {mem_info.vms / 1024**3:.2f} GB")
+            except ImportError:
+                import resource
+                usage = resource.getrusage(resource.RUSAGE_SELF)
+                print(f"[DEBUG {label}] Max RSS: {usage.ru_maxrss / 1024:.2f} MB")
 
-        # Skip to the right transducer for resumed runs
-        if start_index > 0:
-            while transducer_count < len(running_index_list) - 1 and start_index > running_index_list[transducer_count] - 1:
-                transducer_count += 1
-            transducer, transducer_transform = self.transducer_set[transducer_count]
-
-        for index in range(start_index, len(self.results)):
-            if index > running_index_list[transducer_count] - 1:
-                transducer_count += 1
-                transducer, transducer_transform = self.transducer_set[transducer_count]
-            if global_transforms:
-                transform = (
-                    transducer_transform
-                    * transducer.ray_transforms[
-                        index - running_index_list[transducer_count]
-                    ]
-                )
-            else:
-                transform = transducer.ray_transforms[
-                    index - running_index_list[transducer_count]
-                ]
-
-            indices.append(index)
-            transducers.append(transducer)
-            transforms.append(transform)
-
-        sensor_receive = [
-            self.sensor.aperture_type == "transmit_as_receive"
-            for i in range(len(indices))
-        ]
-        attenuation_factors = [attenuation_factor for i in range(len(indices))]
-        inputs = list(
-            zip(indices, transducers, transforms, sensor_receive, attenuation_factors)
-        )
+        def debug_size(obj, name):
+            import sys
+            size = sys.getsizeof(obj)
+            print(f"[DEBUG] Size of {name}: {size / 1024**2:.2f} MB (shallow)")
 
         if save_dir is not None:
-            # Process and save in batches
+            debug_memory("Start of batch processing")
+            print(f"[DEBUG] Total results to process: {total_results}")
+            print(f"[DEBUG] Batch size: {batch_size}")
+            print(f"[DEBUG] Number of workers: {workers}")
+
+            # Process and save in batches - build inputs incrementally
             current_batch = start_index // batch_size
-            total_indices = len(self.results)
+            num_batches = (total_results + batch_size - 1) // batch_size
+            print(f"[DEBUG] Number of batches: {num_batches}")
 
-            for batch_start in tqdm.tqdm(
-                range(0, len(inputs), batch_size),
-                desc="Processing batches",
-                initial=current_batch,
-                total=(total_indices + batch_size - 1) // batch_size
-            ):
-                batch_end = min(batch_start + batch_size, len(inputs))
-                batch_inputs = inputs[batch_start:batch_end]
+            # Initialize transducer state for start_index
+            transducer_count = 0
+            transducer, transducer_transform = self.transducer_set[0]
+            if start_index > 0:
+                transducer_count, transducer, transducer_transform = get_transducer_for_index(
+                    start_index, transducer_count, transducer, transducer_transform
+                )
 
+            debug_memory("Before batch loop")
+
+            for batch_idx in tqdm.tqdm(range(current_batch, num_batches), desc="Processing batches"):
+                batch_start_idx = batch_idx * batch_size
+                batch_end_idx = min(batch_start_idx + batch_size, total_results)
+
+                # Skip batches before start_index
+                if batch_end_idx <= start_index:
+                    continue
+
+                # Adjust for partial first batch when resuming
+                actual_start = max(batch_start_idx, start_index)
+
+                print(f"\n[DEBUG] Building inputs for batch {batch_idx} (indices {actual_start}-{batch_end_idx-1})")
+                debug_memory("Before building batch_inputs")
+
+                # Build inputs for this batch only
+                batch_inputs = []
+                for index in range(actual_start, batch_end_idx):
+                    transducer_count, transducer, transducer_transform = get_transducer_for_index(
+                        index, transducer_count, transducer, transducer_transform
+                    )
+                    transform = get_transform(index, transducer, transducer_transform, transducer_count)
+                    batch_inputs.append((
+                        index, transducer, transform,
+                        sensor_is_transmit_as_receive, attenuation_factor
+                    ))
+
+                print(f"[DEBUG] Built {len(batch_inputs)} inputs")
+                debug_memory("After building batch_inputs")
+
+                # Check size of first input tuple
+                if batch_inputs:
+                    import sys
+                    first_input = batch_inputs[0]
+                    print(f"[DEBUG] First input tuple size: {sys.getsizeof(first_input)} bytes")
+                    print(f"[DEBUG] Transducer object size: {sys.getsizeof(first_input[1])} bytes (shallow)")
+                    # Try to get deep size of transducer
+                    try:
+                        import pickle
+                        pickled = pickle.dumps(first_input[1])
+                        print(f"[DEBUG] Transducer pickled size: {len(pickled) / 1024**2:.2f} MB")
+                    except Exception as e:
+                        print(f"[DEBUG] Could not pickle transducer: {e}")
+
+                # Process batch
                 if workers > 1:
+                    print(f"[DEBUG] Starting multiprocessing pool with {workers} workers")
+                    debug_memory("Before creating Pool")
                     with multiprocessing.Pool(workers) as p:
-                        batch_results = list(p.starmap(
-                            self.process_line,
-                            tqdm.tqdm(batch_inputs, total=len(batch_inputs), desc="  Rays", leave=False)
-                        ))
+                        print("[DEBUG] Pool created, starting imap")
+                        debug_memory("After creating Pool, before imap")
+                        batch_results = []
+                        for result in tqdm.tqdm(
+                            p.imap(self._process_line_wrapper, batch_inputs, chunksize=100),
+                            total=len(batch_inputs),
+                            desc="  Rays",
+                            leave=False
+                        ):
+                            batch_results.append(result)
+                        debug_memory("After imap complete")
                 else:
                     batch_results = []
                     for input_data in tqdm.tqdm(batch_inputs, desc="  Rays", leave=False):
@@ -262,32 +316,42 @@ class DAS(Reconstruction):
                 batch_coords = [r[1] for r in batch_results]
                 batch_processed = [r[2] for r in batch_results]
 
-                actual_start = start_index + batch_start
-                actual_end = start_index + batch_end
-
-                batch_file = os.path.join(save_dir, f"preprocess_batch_{current_batch:04d}.npz")
+                batch_file = os.path.join(save_dir, f"preprocess_batch_{batch_idx:04d}.npz")
                 np.savez_compressed(
                     batch_file,
                     times=np.array(batch_times, dtype=object),
                     coords=np.array(batch_coords, dtype=object),
                     processed=np.array(batch_processed, dtype=object),
                     start_index=actual_start,
-                    end_index=actual_end
+                    end_index=batch_end_idx
                 )
-                print(f"Saved batch {current_batch} (indices {actual_start}-{actual_end-1}) to {batch_file}")
+                print(f"Saved batch {batch_idx} (indices {actual_start}-{batch_end_idx-1}) to {batch_file}")
 
                 # Clear memory
-                del batch_results, batch_times, batch_coords, batch_processed
-                current_batch += 1
+                del batch_results, batch_times, batch_coords, batch_processed, batch_inputs
 
             return save_dir
         else:
-            # Original behavior - process all at once
+            # Original behavior - process all at once, build inputs list
+            transducer_count = 0
+            transducer, transducer_transform = self.transducer_set[0]
+
+            inputs = []
+            for index in range(total_results):
+                transducer_count, transducer, transducer_transform = get_transducer_for_index(
+                    index, transducer_count, transducer, transducer_transform
+                )
+                transform = get_transform(index, transducer, transducer_transform, transducer_count)
+                inputs.append((
+                    index, transducer, transform,
+                    sensor_is_transmit_as_receive, attenuation_factor
+                ))
+
             results = []
             if workers > 1:
                 with multiprocessing.Pool(workers) as p:
                     results = p.starmap(
-                        self.process_line, tqdm.tqdm(inputs, total=len(indices))
+                        self.process_line, tqdm.tqdm(inputs, total=len(inputs))
                     )
             else:
                 for input_data in inputs:
@@ -305,6 +369,10 @@ class DAS(Reconstruction):
             coords = [r[1] for r in results]
             processed = [r[2] for r in results]
             return times, coords, processed
+
+    def _process_line_wrapper(self, args):
+        """Wrapper for process_line to work with imap (single argument)."""
+        return self.process_line(args[0], args[1], args[2], args[3], args[4])
 
     def load_preprocessed_data(self, save_dir):
         """
