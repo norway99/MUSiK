@@ -19,6 +19,166 @@ from .experiment import Experiment, Results
 from scipy.signal import hilbert
 
 
+# Module-level globals for multiprocessing worker shared state
+_worker_state = {}
+
+
+def _init_worker(transducer_set, results, sim_properties, sensor_aperture_type, sound_speed):
+    """Initialize worker process with shared data (called once per worker)."""
+    _worker_state['transducer_set'] = transducer_set
+    _worker_state['results'] = results
+    _worker_state['sim_properties'] = sim_properties
+    _worker_state['sensor_aperture_type'] = sensor_aperture_type
+    _worker_state['sound_speed'] = sound_speed
+
+
+def _process_line_worker(args):
+    """
+    Worker function for processing a single line.
+    Uses shared state initialized by _init_worker.
+
+    Args: (index, transducer_idx, transform_array, transmit_as_receive, attenuation_factor)
+    """
+    index, transducer_idx, transform_array, transmit_as_receive, attenuation_factor = args
+
+    transducer_set = _worker_state['transducer_set']
+    results = _worker_state['results']
+    sim_properties = _worker_state['sim_properties']
+    sound_speed = _worker_state['sound_speed']
+
+    # Get transducer by index
+    transducer, _ = transducer_set[transducer_idx]
+
+    # Reconstruct transform matrix from array
+    transform = np.asarray(transform_array)
+
+    # Process the line
+    processed = transducer.preprocess(
+        transducer.make_scan_line(results[index][1], transmit_as_receive),
+        results[index][0],
+        sim_properties,
+        attenuation_factor=attenuation_factor,
+    )
+
+    # Compute coordinates from time (same as __time_to_coord)
+    times = results[index][0]
+    distances = times * sound_speed / 2
+    # Pad distances to 3D points: [d, 0, 0] -> apply transform
+    dists_padded = np.pad(
+        distances[..., None], ((0, 0), (0, 2)), mode="constant", constant_values=0
+    )
+    # Apply homogeneous transform: add 1s column, multiply, take first 3 cols
+    ones = np.ones((dists_padded.shape[0], 1))
+    points_homogeneous = np.hstack([dists_padded, ones])
+    coords = (transform @ points_homogeneous.T).T[:, :3]
+
+    return times, coords, processed
+
+
+class PreprocessedDataLoader:
+    """
+    Lazy-loading accessor for preprocessed data stored in batch files.
+
+    Loads batches on-demand and keeps only a limited number in memory
+    to prevent OOM errors with large datasets.
+    """
+
+    def __init__(self, save_dir, max_cached_batches=2):
+        import glob
+        self.save_dir = save_dir
+        self.max_cached_batches = max_cached_batches
+
+        # Find all batch files and build index
+        self.batch_files = sorted(glob.glob(os.path.join(save_dir, "preprocess_batch_*.npz")))
+        if not self.batch_files:
+            raise FileNotFoundError(f"No preprocess batch files found in {save_dir}")
+
+        # Build index mapping: for each batch, store (start_index, end_index, filepath)
+        self.batch_index = []
+        for batch_file in self.batch_files:
+            data = np.load(batch_file, allow_pickle=True)
+            start_idx = int(data['start_index'])
+            end_idx = int(data['end_index'])
+            self.batch_index.append((start_idx, end_idx, batch_file))
+            data.close()
+
+        # Cache for loaded batches: {batch_idx: (times, coords, processed)}
+        self._cache = {}
+        self._cache_order = []  # Track access order for LRU eviction
+
+        # Total length
+        self.total_length = self.batch_index[-1][1] if self.batch_index else 0
+
+    def __len__(self):
+        return self.total_length
+
+    def _find_batch_for_index(self, idx):
+        """Find which batch contains the given index."""
+        for batch_idx, (start, end, _) in enumerate(self.batch_index):
+            if start <= idx < end:
+                return batch_idx
+        raise IndexError(f"Index {idx} out of range [0, {self.total_length})")
+
+    def _load_batch(self, batch_idx):
+        """Load a batch into cache, evicting old batches if needed."""
+        if batch_idx in self._cache:
+            # Move to end of access order (most recently used)
+            self._cache_order.remove(batch_idx)
+            self._cache_order.append(batch_idx)
+            return
+
+        # Evict oldest batches if cache is full
+        while len(self._cache) >= self.max_cached_batches:
+            oldest = self._cache_order.pop(0)
+            del self._cache[oldest]
+
+        # Load the batch
+        _, _, batch_file = self.batch_index[batch_idx]
+        data = np.load(batch_file, allow_pickle=True)
+        self._cache[batch_idx] = (
+            list(data['times']),
+            list(data['coords']),
+            list(data['processed'])
+        )
+        self._cache_order.append(batch_idx)
+        data.close()
+
+    def get_range(self, start_idx, end_idx):
+        """
+        Get times, coords, processed for a range of indices.
+
+        Returns three lists containing the data for indices [start_idx, end_idx).
+        """
+        times = []
+        coords = []
+        processed = []
+
+        current_idx = start_idx
+        while current_idx < end_idx:
+            batch_idx = self._find_batch_for_index(current_idx)
+            self._load_batch(batch_idx)
+
+            batch_start, batch_end, _ = self.batch_index[batch_idx]
+            batch_times, batch_coords, batch_processed = self._cache[batch_idx]
+
+            # Calculate slice within this batch
+            local_start = current_idx - batch_start
+            local_end = min(end_idx - batch_start, batch_end - batch_start)
+
+            times.extend(batch_times[local_start:local_end])
+            coords.extend(batch_coords[local_start:local_end])
+            processed.extend(batch_processed[local_start:local_end])
+
+            current_idx = batch_start + local_end
+
+        return times, coords, processed
+
+    def clear_cache(self):
+        """Clear all cached batches to free memory."""
+        self._cache.clear()
+        self._cache_order.clear()
+
+
 class Reconstruction:
     def __init__(
         self,
@@ -199,35 +359,10 @@ class DAS(Reconstruction):
                     if start_index > 0:
                         print(f"Resuming from index {start_index} (found {len(existing_files)} existing batches)")
 
-        # Debug helper for memory tracking
-        def debug_memory(label):
-            import gc
-            gc.collect()
-            try:
-                import psutil
-                process = psutil.Process()
-                mem_info = process.memory_info()
-                print(f"[DEBUG {label}] RSS: {mem_info.rss / 1024**3:.2f} GB, VMS: {mem_info.vms / 1024**3:.2f} GB")
-            except ImportError:
-                import resource
-                usage = resource.getrusage(resource.RUSAGE_SELF)
-                print(f"[DEBUG {label}] Max RSS: {usage.ru_maxrss / 1024:.2f} MB")
-
-        def debug_size(obj, name):
-            import sys
-            size = sys.getsizeof(obj)
-            print(f"[DEBUG] Size of {name}: {size / 1024**2:.2f} MB (shallow)")
-
         if save_dir is not None:
-            debug_memory("Start of batch processing")
-            print(f"[DEBUG] Total results to process: {total_results}")
-            print(f"[DEBUG] Batch size: {batch_size}")
-            print(f"[DEBUG] Number of workers: {workers}")
-
             # Process and save in batches - build inputs incrementally
             current_batch = start_index // batch_size
             num_batches = (total_results + batch_size - 1) // batch_size
-            print(f"[DEBUG] Number of batches: {num_batches}")
 
             # Initialize transducer state for start_index
             transducer_count = 0
@@ -236,8 +371,6 @@ class DAS(Reconstruction):
                 transducer_count, transducer, transducer_transform = get_transducer_for_index(
                     start_index, transducer_count, transducer, transducer_transform
                 )
-
-            debug_memory("Before batch loop")
 
             for batch_idx in tqdm.tqdm(range(current_batch, num_batches), desc="Processing batches"):
                 batch_start_idx = batch_idx * batch_size
@@ -250,10 +383,7 @@ class DAS(Reconstruction):
                 # Adjust for partial first batch when resuming
                 actual_start = max(batch_start_idx, start_index)
 
-                print(f"\n[DEBUG] Building inputs for batch {batch_idx} (indices {actual_start}-{batch_end_idx-1})")
-                debug_memory("Before building batch_inputs")
-
-                # Build inputs for this batch only
+                # Build inputs for this batch only - pass transducer INDEX, not object
                 batch_inputs = []
                 for index in range(actual_start, batch_end_idx):
                     transducer_count, transducer, transducer_transform = get_transducer_for_index(
@@ -261,55 +391,33 @@ class DAS(Reconstruction):
                     )
                     transform = get_transform(index, transducer, transducer_transform, transducer_count)
                     batch_inputs.append((
-                        index, transducer, transform,
+                        index, transducer_count, transform.get(),
                         sensor_is_transmit_as_receive, attenuation_factor
                     ))
 
-                print(f"[DEBUG] Built {len(batch_inputs)} inputs")
-                debug_memory("After building batch_inputs")
-
-                # Check size of first input tuple
-                if batch_inputs:
-                    import sys
-                    first_input = batch_inputs[0]
-                    print(f"[DEBUG] First input tuple size: {sys.getsizeof(first_input)} bytes")
-                    print(f"[DEBUG] Transducer object size: {sys.getsizeof(first_input[1])} bytes (shallow)")
-                    # Try to get deep size of transducer
-                    try:
-                        import pickle
-                        pickled = pickle.dumps(first_input[1])
-                        print(f"[DEBUG] Transducer pickled size: {len(pickled) / 1024**2:.2f} MB")
-                    except Exception as e:
-                        print(f"[DEBUG] Could not pickle transducer: {e}")
-
                 # Process batch
                 if workers > 1:
-                    print(f"[DEBUG] Starting multiprocessing pool with {workers} workers")
-                    debug_memory("Before creating Pool")
-                    with multiprocessing.Pool(workers) as p:
-                        print("[DEBUG] Pool created, starting imap")
-                        debug_memory("After creating Pool, before imap")
+                    sound_speed = self.phantom.baseline[0]
+                    with multiprocessing.Pool(
+                        workers,
+                        initializer=_init_worker,
+                        initargs=(self.transducer_set, self.results, self.sim_properties, self.sensor.aperture_type, sound_speed)
+                    ) as p:
                         batch_results = []
                         for result in tqdm.tqdm(
-                            p.imap(self._process_line_wrapper, batch_inputs, chunksize=100),
+                            p.imap(_process_line_worker, batch_inputs, chunksize=100),
                             total=len(batch_inputs),
                             desc="  Rays",
                             leave=False
                         ):
                             batch_results.append(result)
-                        debug_memory("After imap complete")
                 else:
+                    # For single worker, set up worker state and use same function
+                    sound_speed = self.phantom.baseline[0]
+                    _init_worker(self.transducer_set, self.results, self.sim_properties, self.sensor.aperture_type, sound_speed)
                     batch_results = []
                     for input_data in tqdm.tqdm(batch_inputs, desc="  Rays", leave=False):
-                        batch_results.append(
-                            self.process_line(
-                                input_data[0],
-                                input_data[1],
-                                input_data[2],
-                                input_data[3],
-                                input_data[4],
-                            )
-                        )
+                        batch_results.append(_process_line_worker(input_data))
 
                 # Extract and save batch
                 batch_times = [r[0] for r in batch_results]
@@ -332,7 +440,7 @@ class DAS(Reconstruction):
 
             return save_dir
         else:
-            # Original behavior - process all at once, build inputs list
+            # Original behavior - process all at once, build lightweight inputs list
             transducer_count = 0
             transducer, transducer_transform = self.transducer_set[0]
 
@@ -342,37 +450,34 @@ class DAS(Reconstruction):
                     index, transducer_count, transducer, transducer_transform
                 )
                 transform = get_transform(index, transducer, transducer_transform, transducer_count)
+                # Pass transducer index, not object
                 inputs.append((
-                    index, transducer, transform,
+                    index, transducer_count, transform.get(),
                     sensor_is_transmit_as_receive, attenuation_factor
                 ))
 
             results = []
+            sound_speed = self.phantom.baseline[0]
             if workers > 1:
-                with multiprocessing.Pool(workers) as p:
-                    results = p.starmap(
-                        self.process_line, tqdm.tqdm(inputs, total=len(inputs))
-                    )
+                with multiprocessing.Pool(
+                    workers,
+                    initializer=_init_worker,
+                    initargs=(self.transducer_set, self.results, self.sim_properties, self.sensor.aperture_type, sound_speed)
+                ) as p:
+                    results = list(tqdm.tqdm(
+                        p.imap(_process_line_worker, inputs, chunksize=100),
+                        total=len(inputs)
+                    ))
             else:
-                for input_data in inputs:
-                    results.append(
-                        self.process_line(
-                            input_data[0],
-                            input_data[1],
-                            input_data[2],
-                            input_data[3],
-                            input_data[4],
-                        )
-                    )
+                # For single worker, set up worker state and use same function
+                _init_worker(self.transducer_set, self.results, self.sim_properties, self.sensor.aperture_type, sound_speed)
+                for input_data in tqdm.tqdm(inputs, total=len(inputs)):
+                    results.append(_process_line_worker(input_data))
 
             times = [r[0] for r in results]
             coords = [r[1] for r in results]
             processed = [r[2] for r in results]
             return times, coords, processed
-
-    def _process_line_wrapper(self, args):
-        """Wrapper for process_line to work with imap (single argument)."""
-        return self.process_line(args[0], args[1], args[2], args[3], args[4])
 
     def load_preprocessed_data(self, save_dir):
         """
@@ -387,6 +492,9 @@ class DAS(Reconstruction):
         -------
         times, coords, processed : lists
             Combined data from all batch files
+
+        Note: This loads all data into memory. For large datasets, use
+        PreprocessedDataLoader for lazy loading instead.
         """
         import glob
         batch_files = sorted(glob.glob(os.path.join(save_dir, "preprocess_batch_*.npz")))
@@ -405,6 +513,25 @@ class DAS(Reconstruction):
             processed.extend(list(data['processed']))
 
         return times, coords, processed
+
+    def create_preprocessed_data_loader(self, save_dir):
+        """
+        Create a lazy-loading data accessor for preprocessed data.
+
+        This avoids loading all batches into memory at once by loading
+        batches on-demand as data is accessed.
+
+        Parameters
+        ----------
+        save_dir : str
+            Directory containing preprocess_batch_*.npz files
+
+        Returns
+        -------
+        PreprocessedDataLoader
+            Lazy-loading accessor for times, coords, processed data
+        """
+        return PreprocessedDataLoader(save_dir)
 
     def plot_scatter(self, scale=5000, workers=1):
         colorme = lambda x: (
@@ -610,6 +737,11 @@ class DAS(Reconstruction):
         )
 
         # Load or compute preprocessed data
+        use_lazy_loading = False
+        data_loader = None
+        coords = None
+        processed = None
+
         if save_dir is not None:
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
@@ -625,36 +757,55 @@ class DAS(Reconstruction):
                 last_end = int(data['end_index'])
 
                 if last_end >= len(self.results):
-                    print(f"Loading completed preprocessed data from {save_dir}...")
-                    times, coords, processed = self.load_preprocessed_data(save_dir)
+                    print(f"Using lazy loading for preprocessed data from {save_dir}...")
+                    data_loader = self.create_preprocessed_data_loader(save_dir)
+                    use_lazy_loading = True
                 else:
                     print(f"Resuming preprocessing from index {last_end}...")
                     self.preprocess_data(
                         global_transforms=False, workers=workers, attenuation_factor=tgc,
                         save_dir=save_dir, batch_size=preprocess_batch_size, resume=True
                     )
-                    times, coords, processed = self.load_preprocessed_data(save_dir)
+                    data_loader = self.create_preprocessed_data_loader(save_dir)
+                    use_lazy_loading = True
             else:
                 print(f"Running preprocessing with incremental saving to {save_dir}...")
                 self.preprocess_data(
                     global_transforms=False, workers=workers, attenuation_factor=tgc,
                     save_dir=save_dir, batch_size=preprocess_batch_size, resume=resume
                 )
-                times, coords, processed = self.load_preprocessed_data(save_dir)
+                data_loader = self.create_preprocessed_data_loader(save_dir)
+                use_lazy_loading = True
         else:
             times, coords, processed = self.preprocess_data(
                 global_transforms=False, workers=workers, attenuation_factor=tgc
             )
 
         if bounds is None:
-            flat_coords = np.concatenate(coords, axis=0).reshape(-1, 3)
-            bounds = np.array(
-                [
-                    (np.min(flat_coords[:, 0]), np.max(flat_coords[:, 0])),
-                    (np.min(flat_coords[:, 1]), np.max(flat_coords[:, 1])),
-                    (np.min(flat_coords[:, 2]), np.max(flat_coords[:, 2])),
-                ]
-            )
+            if use_lazy_loading:
+                # With lazy loading, we can't easily compute bounds without loading all data
+                # Load a sample to estimate bounds
+                print("Warning: bounds=None with lazy loading - estimating from sample data")
+                sample_times, sample_coords, sample_processed = data_loader.get_range(0, min(10000, len(data_loader)))
+                flat_coords = np.concatenate(sample_coords, axis=0).reshape(-1, 3)
+                bounds = np.array(
+                    [
+                        (np.min(flat_coords[:, 0]) * 1.1, np.max(flat_coords[:, 0]) * 1.1),
+                        (np.min(flat_coords[:, 1]) * 1.1, np.max(flat_coords[:, 1]) * 1.1),
+                        (np.min(flat_coords[:, 2]) * 1.1, np.max(flat_coords[:, 2]) * 1.1),
+                    ]
+                )
+                print(f"Estimated bounds from sample: {bounds}")
+                data_loader.clear_cache()  # Free the sample data
+            else:
+                flat_coords = np.concatenate(coords, axis=0).reshape(-1, 3)
+                bounds = np.array(
+                    [
+                        (np.min(flat_coords[:, 0]), np.max(flat_coords[:, 0])),
+                        (np.min(flat_coords[:, 1]), np.max(flat_coords[:, 1])),
+                        (np.min(flat_coords[:, 2]), np.max(flat_coords[:, 2])),
+                    ]
+                )
         elif (
             type(bounds) is list or type(bounds) is tuple or type(bounds) is np.ndarray
         ):
@@ -742,12 +893,19 @@ class DAS(Reconstruction):
             if save_dir is not None and i < start_transducer:
                 continue
 
-            subset_coords = np.stack(
-                coords[count : int(count + transducer.get_num_rays())], axis=0
-            ).reshape(-1, 3)
-            subset_processed = np.stack(
-                processed[count : int(count + transducer.get_num_rays())], axis=0
-            ).reshape(-1)
+            # Get data for this transducer - either from lazy loader or pre-loaded lists
+            num_rays = transducer.get_num_rays()
+            if use_lazy_loading:
+                _, subset_coords_list, subset_processed_list = data_loader.get_range(count, count + num_rays)
+                subset_coords = np.stack(subset_coords_list, axis=0).reshape(-1, 3)
+                subset_processed = np.stack(subset_processed_list, axis=0).reshape(-1)
+            else:
+                subset_coords = np.stack(
+                    coords[count : int(count + num_rays)], axis=0
+                ).reshape(-1, 3)
+                subset_processed = np.stack(
+                    processed[count : int(count + num_rays)], axis=0
+                ).reshape(-1)
 
             if downsample != 1:
                 subset_processed = gaussian_filter1d(
