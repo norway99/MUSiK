@@ -54,15 +54,32 @@ def build_phantom(voxel_size=0.001, asset_dir=None):
 
 def build_transducer_set(baseline_speed, num_transducers=1, seed=8888):
     """Initialize a set of focused transducers."""
+    # transducers = [
+    #     transducer.Focused(
+    #         max_frequency=1.0e6,
+    #         elements=128,
+    #         width=20e-3,
+    #         height=20e-3,
+    #         sensor_sampling_scheme="not_centroid",
+    #         sweep=np.pi / 2,
+    #         ray_num=32,
+    #         imaging_ndims=2,
+    #         focus_azimuth=100e-3,
+    #         focus_elevation=150e-3,
+    #         cycles=3,
+    #     )
+    #     for _ in range(num_transducers)
+    # ]
+    
     transducers = [
         transducer.Focused(
-            max_frequency=1.0e6,
+            max_frequency=0.5e6,
             elements=128,
             width=20e-3,
             height=20e-3,
             sensor_sampling_scheme="not_centroid",
             sweep=np.pi / 2,
-            ray_num=32,
+            ray_num=24,
             imaging_ndims=2,
             focus_azimuth=100e-3,
             focus_elevation=150e-3,
@@ -95,7 +112,7 @@ def build_sim_properties():
     )
 
 
-def initialize_simulation(simulation_path="simulate_autoregressive_guidance", save=True):
+def initialize_simulation(simulation_path="TTE_5k_fast_ARSampling", save=True):
     """
     Initialize a complete simulation experiment for autoregressive guidance.
 
