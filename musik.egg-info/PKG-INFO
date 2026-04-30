@@ -1,3 +1,83 @@
+Metadata-Version: 2.4
+Name: musik
+Version: 0.1.0
+Summary: Multi-transducer Ultrasound Simulations in K-wave
+Home-page: https://github.com/norway99/MUSiK
+Author: Trevor Chan, Aparna Nair-kanneganti
+Author-email: tjchan@seas.upenn.edu
+Project-URL: Bug Reports, https://github.com/norway99/MUSiK/issues
+Project-URL: Source, https://github.com/norway99/MUSiK
+Project-URL: Documentation, https://github.com/norway99/MUSiK/blob/main/README.md
+Keywords: ultrasound simulation k-wave medical imaging acoustics
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Scientific/Engineering :: Medical Science Apps.
+Classifier: Topic :: Scientific/Engineering :: Physics
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=2.3.5
+Requires-Dist: scipy>=1.16.0
+Requires-Dist: matplotlib>=3.10.0
+Requires-Dist: h5py>=3.15.0
+Requires-Dist: pillow>=12.0.0
+Requires-Dist: mrcfile>=1.5.0
+Requires-Dist: tqdm>=4.67.0
+Requires-Dist: beartype>=0.22.0
+Requires-Dist: jaxtyping>=0.3.0
+Requires-Dist: deprecated>=1.3.0
+Requires-Dist: einops==0.8.0
+Requires-Dist: natsort==8.4.0
+Requires-Dist: plotly==6.4.0
+Requires-Dist: scikit-image==0.25.2
+Requires-Dist: scikit-learn==1.7.2
+Requires-Dist: numba==0.62.1
+Requires-Dist: contourpy>=1.3.0
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: flake8; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: sphinx; extra == "docs"
+Requires-Dist: sphinx-rtd-theme; extra == "docs"
+Provides-Extra: full
+Requires-Dist: imageio>=2.33.0; extra == "full"
+Requires-Dist: json5>=0.9.14; extra == "full"
+Requires-Dist: meshlib>=2.4.1.114; extra == "full"
+Requires-Dist: nptyping>=2.5.0; extra == "full"
+Requires-Dist: open3d>=0.18.0; extra == "full"
+Requires-Dist: ordered-set>=4.0.2; extra == "full"
+Requires-Dist: pandas>=2.1.3; extra == "full"
+Requires-Dist: pydicom>=2.4.4; extra == "full"
+Requires-Dist: pyquaternion>=0.9.9; extra == "full"
+Requires-Dist: PyWavelets>=1.5.0; extra == "full"
+Requires-Dist: tifffile>=2023.9.26; extra == "full"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license-file
+Dynamic: project-url
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
 # MUSiK: Multi-transducer Ultrasound Simulations in K-wave
 
 ![MUSiK Framework](figures/musik.png)
@@ -18,13 +98,6 @@ git clone --recursive --remote-submodules https://github.com/norway99/MUSiK.git
 
 # Navigate to the cloned directory
 cd MUSiK
-
-# Create and activate a new conda environment (recommended)
-conda create -n musik python=3.12
-conda activate musik
-
-# Install in development mode
-pip install -e .
 ```
 
 If you already cloned the repository without the `--recursive` flag, you can initialize the submodules with:
@@ -32,7 +105,15 @@ If you already cloned the repository without the `--recursive` flag, you can ini
 git submodule update --init --recursive --remote
 ```
 
+### Setting up the Environment
+```bash
+# Create and activate a new conda environment (recommended)
+conda create -n musik python=3.12
+conda activate musik
 
+# Install dependencies
+pip install -r requirements.txt
+```
 
 #### Note on k-wave-python
 The k-wave-python package is included as a submodule in this repository. Alternatively, you can install it directly with pip:
@@ -43,23 +124,6 @@ pip install k-wave-python
 **Important**: When running k-wave for the first time, it needs to download some binaries which may cause issues in computing environments without internet access (e.g., HPC compute nodes). If necessary, prepare your environment by running a simple k-wave script on a node with internet access before running your full simulations. (this should happen automatically by running the start_here demo.)
 
 ## Getting Started
-
-### Quick Start with Python
-Once installed, you can import and use MUSiK in your Python scripts:
-
-```python
-import musik
-from musik import phantom, tissue, transducer, experiment
-
-# Create a simple phantom
-my_phantom = phantom.Phantom(...)
-
-# Set up a transducer
-my_transducer = transducer.Focused(...)
-
-# Run a simulation
-my_experiment = experiment.Experiment(...)
-```
 
 ### Running the Introductory Demo
 The repository includes an introductory demo that demonstrates the basic functionality of MUSiK:
@@ -97,8 +161,6 @@ MUSiK supports distributing simulation workloads across multiple GPUs on a singl
 
 1. First, prepare your experiment as you would for any simulation:
 ```python
-from musik import experiment
-
 my_experiment = experiment.Experiment(
     simulation_path = 'my_simulation',
     sim_properties = my_simprops,
@@ -148,8 +210,6 @@ For larger simulations, MUSiK provides tools to distribute computations across m
 
 1. Prepare your experiment by creating and saving an Experiment object:
 ```python
-from musik import experiment
-
 my_experiment = experiment.Experiment(
     simulation_path = 'my_simulation',
     sim_properties = my_simprops,

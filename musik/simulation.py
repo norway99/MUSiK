@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import Tuple, List, Union, Optional
 
 import sys
-from utils import utils
-from utils import geometry
+from .utils import utils
+from .utils import geometry
 
 import kwave
 import kwave.kmedium
@@ -414,7 +414,8 @@ class Simulation:
                     mask=sensor_mask, record=list(set(["p"] + additional_keys))
                 ),
                 simulation_options=simulation_options,
-                execution_options=kwave.options.simulation_execution_options.SimulationExecutionOptions(
+                # execution_options=kwave.options.simulation_execution_options.SimulationExecutionOptions(
+                execution_options=kwave.options.SimulationExecutionOptions(
                     is_gpu_simulation=self.gpu, show_sim_log=False
                 ),
             )

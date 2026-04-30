@@ -1,5 +1,5 @@
 import numpy as np
-from utils import geometry
+from .utils import geometry
 import matplotlib.pyplot as plt
 
 import kwave

@@ -3,9 +3,9 @@ import scipy
 import scipy.ndimage
 import os
 from os import listdir
-from utils import utils
-from utils import geometry
-from tissue import Tissue
+from .utils import utils
+from .utils import geometry
+from .tissue import Tissue
 from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional, Any, Union, List, Callable
