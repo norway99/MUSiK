@@ -39,20 +39,51 @@ def tempdir():
 
 @dataclass
 class SimProperties:
-    """
-    Simulation properties for acoustic wave propagation simulations.
-    
+    """Simulation properties for acoustic wave propagation simulations.
+
     This class defines the physical and computational parameters for k-Wave simulations,
     including grid dimensions, voxel sizes, PML (Perfectly Matched Layer) settings,
     and acoustic medium properties. It also provides methods for optimizing simulation
     parameters based on acoustic frequency and automatically calculating appropriate
     matrix sizes for efficient computation using FFT-based methods.
+
+    Attributes:
+        grid_size: Physical dimensions of the simulation domain in meters (x, y, z).
+            Default is (128e-3, 32e-3, 32e-3) = 128mm x 32mm x 32mm.
+        voxel_size: Spatial resolution of each voxel in meters (x, y, z).
+            Default is (0.1e-3, 0.1e-3, 0.1e-3) = 0.1mm isotropic.
+        PML_size: Perfectly Matched Layer padding in voxels for each dimension.
+            PML absorbs outgoing waves to prevent boundary reflections.
+            Default is (32, 8, 8) voxels.
+        PML_alpha: PML absorption coefficient controlling reflection reduction.
+            Higher values increase absorption. Default is 2.
+        t_end: Simulation end time in seconds (auto-calculated based on grid_size
+            and sound speed to allow full wave traversal).
+        bona: Nonlinearity parameter (B/A) for the acoustic medium.
+            Controls strength of nonlinear acoustic effects. Default is 6.
+        alpha_coeff: Acoustic attenuation coefficient in dB/(MHz^y cm).
+            Models frequency-dependent absorption. Default is 0.75.
+        alpha_power: Frequency power law exponent for attenuation.
+            Typically 1.0-1.5 for biological tissues. Default is 1.5.
+        grid_lambda: Multiple of Nyquist limit for setting voxel size.
+            Higher values give finer resolution. Default is 2.
+        matrix_size: Computed grid dimensions in voxels (auto-calculated).
+            Optimized for efficient FFT computation.
+        bounds: Computed bounding vertices of the simulation domain (auto-calculated).
+
+    Example:
+        >>> props = SimProperties(
+        ...     grid_size=(0.08, 0.08, 0.08),
+        ...     voxel_size=(0.5e-3, 0.5e-3, 0.5e-3),
+        ...     PML_size=(20, 20, 20),
+        ... )
+        >>> props.optimize_simulation_parameters(frequency=2e6)
     """
     grid_size: Tuple[float, float, float] = (128e-3, 32e-3, 32e-3)  # simulation grid size in meters [m]
     voxel_size: Tuple[float, float, float] = (0.1e-3, 0.1e-3, 0.1e-3)  # simulation voxel size in meters [m]
     PML_size: Tuple[int, int, int] = (32, 8, 8)  # PML padding in voxels
     PML_alpha: float = 2  # PML absorption coefficient
-    t_end: float = 2e-5  # simulation end time [s]
+    t_end: float = field(init=False)  # simulation end time [s] (auto-computed)
     bona: float = 6  # parameter b/a determining degree of nonlinear acoustic effects
     alpha_coeff: float = 0.75  # attenuation coefficient [dB/(MHz^y cm)]
     alpha_power: float = 1.5  # attenuation power scaling
@@ -70,6 +101,7 @@ class SimProperties:
         self.bounds = self.calc_bounding_vertices(
             self.matrix_size, self.PML_size, self.voxel_size
         )
+        self.t_end = self.__optimize_simulation_duration()
 
     def save(self, filepath):
         utils.dict_to_json(self.__dict__, filepath)
@@ -178,6 +210,43 @@ class SimProperties:
 
 
 class Simulation:
+    """Executes a single k-Wave acoustic simulation for one transmit ray.
+
+    The Simulation class handles the preparation and execution of individual
+    acoustic wave propagation simulations using the k-Wave toolbox. Each
+    simulation corresponds to one transmit ray (beam) from a transducer.
+
+    The simulation workflow involves:
+    1. Preparing the simulation by interpolating the phantom for the ray geometry
+    2. Creating k-Wave objects (kgrid, medium, source, sensor)
+    3. Running the k-Wave CUDA binary for GPU-accelerated computation
+    4. Saving the resulting pressure signals to disk
+
+    Attributes:
+        sim_properties: SimProperties instance defining grid and timing parameters.
+        phantom: Phantom instance defining the tissue volume.
+        transducer_set: TransducerSet instance with transducer configurations.
+        sensor: Sensor instance defining signal capture configuration.
+        simulation_path: Directory path for saving simulation results.
+        index: Simulation index (ray number) to execute.
+        gpu: Whether to use GPU acceleration (default True).
+        dry: If True, skip actual simulation for testing setup (default False).
+        prepped_simulation: Cached prepared simulation objects after prep().
+        additional_keys: Additional k-Wave output keys to record (e.g., ['p_max']).
+
+    Example:
+        >>> sim = Simulation(
+        ...     sim_properties=props,
+        ...     phantom=phantom,
+        ...     transducer_set=tx_set,
+        ...     sensor=sensor,
+        ...     simulation_path='./results',
+        ...     index=0,
+        ... )
+        >>> sim.prep()  # Prepare k-Wave objects
+        >>> sim.run()   # Execute simulation and save results
+    """
+
     def __init__(
         self,
         sim_properties,
@@ -202,16 +271,34 @@ class Simulation:
         self.additional_keys = additional_keys
         self.record_pressure_field = sensor.aperture_type == "pressure_field"
 
-    def prep(
-        self,
-    ):
+    def prep(self):
+        """Prepare the simulation by building k-Wave objects.
+
+        This method performs the cpu intensive preparation phase:
+        - Interpolates the phantom for the specific ray geometry
+        - Creates the k-Wave grid, medium, source, and sensor objects
+        - Caches the result in self.prepped_simulation for later execution
+
+        The preparation is skipped if the simulation has already been prepared.
+        This allows separating preparation from execution for parallel workflows.
+        """
         if self.prepped_simulation is not None:
             return
         self.prepped_simulation = self.__prep_by_index(self.index, dry=self.dry)
 
-    def run(
-        self,
-    ):
+    def run(self):
+        """Execute the k-Wave simulation and save results.
+
+        This method runs the prepared simulation using the k-Wave CUDA binary
+        (if GPU is enabled) or CPU solver. Results are saved to disk as numpy
+        arrays in the simulation_path/results/ directory.
+
+        If the simulation has not been prepared, prep() is called automatically.
+
+        Output files:
+            - signal_{index:06d}.npy: Time array and pressure signals
+            - key_signal_{key:02d}_{index:06d}.npy: Additional recorded fields
+        """
         if self.prepped_simulation is None:
             self.prep()
         self.__run_by_index(self.index, dry=self.dry)
@@ -495,6 +582,19 @@ class Simulation:
     def plot_medium_path(
         self, index, ax=None, save=False, save_path=None, cmap="viridis"
     ):
+        """Visualize the interpolated phantom for a specific ray.
+
+        Displays two orthogonal slices (XY and XZ planes) of the sound speed
+        map as seen from the perspective of the specified transmit ray.
+
+        Args:
+            index: Simulation index (ray number) to visualize.
+            ax: Optional matplotlib axes (list of 2) for plotting.
+                If None, creates a new figure.
+            save: If True, save the figure to save_path instead of displaying.
+            save_path: File path for saving the figure (required if save=True).
+            cmap: Matplotlib colormap name. Default is 'viridis'.
+        """
         for transducer_number, transducer in enumerate(
             self.transducer_set.transmit_transducers()
         ):

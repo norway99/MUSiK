@@ -6,6 +6,38 @@ from .transducer import Transducer, Focused, Planewave
 
 
 class TransducerSet:
+    """Manages a collection of transducers with their spatial poses.
+
+    TransducerSet coordinates multiple ultrasound transducers for multi-view
+    imaging systems. It maintains the list of transducers and their 3D poses
+    (position and orientation), and provides methods for automatic placement
+    on surfaces or geometric configurations.
+
+    Attributes:
+        transducers: List of Transducer instances (Focused or Planewave).
+        poses: List of Transform objects defining each transducer's pose.
+        n_transducers: Total number of transducers in the set.
+        n_transmit: Number of transducers configured to transmit.
+        seed: Random seed for reproducible pose generation.
+        rng: NumPy random generator initialized with seed.
+
+    Example:
+        >>> tx1 = Focused(max_frequency=2e6, elements=128, ...)
+        >>> tx2 = Focused(max_frequency=2e6, elements=128, ...)
+        >>> tx_set = TransducerSet(
+        ...     transducers=[tx1, tx2],
+        ...     poses=[Transform([0, 0, 0], [0, 0, 0.05]),
+        ...            Transform([0, np.pi/4, 0], [0.03, 0, 0.04])],
+        ... )
+        >>> tx_set.save('transducers.json')
+
+        >>> # Auto-generate poses on a sphere
+        >>> tx_set.generate_extrinsics(
+        ...     shape='spherical',
+        ...     extrinsics_kwargs={'radius': 0.1, 'target': [0, 0, 0]}
+        ... )
+    """
+
     def __init__(
         self,
         transducers=[],
@@ -61,9 +93,26 @@ class TransducerSet:
             transducer_set_dict["transducers"].append(my_dict)
         utils.dict_to_json(transducer_set_dict, save_file)
 
-    def generate_extrinsics(
-        self, shape=None, extrinsics_kwargs=None
-    ):  # put tissue_mask = None, target = None, attenuation_threshold = None into extrinsics_kwargs
+    def generate_extrinsics(self, shape=None, extrinsics_kwargs=None):
+        """Auto-generate transducer poses based on geometric configuration.
+
+        Assigns poses to all transducers based on the specified shape pattern.
+        Useful for creating standardized array configurations without manual
+        pose specification.
+
+        Args:
+            shape: Configuration pattern. Options:
+                - 'spherical': Distribute on sphere surface pointing inward
+                - 'cylindrical': Distribute on cylinder surface
+                - 'constrained': Optimize placement (requires tissue_mask)
+                - 'flat': Planar arrangement (not implemented)
+                - None/other: Random positions within bounds
+            extrinsics_kwargs: Dictionary of parameters passed to the pose
+                generator. Common keys:
+                - 'radius': Distance from center (spherical/cylindrical)
+                - 'target': Point to aim transducers at
+                - 'height_range': (min, max) z-coordinates (cylindrical)
+        """
         if shape == "constrained":
             if tissue_mask is None or target is None or attenuation_threshold is None:
                 raise Exception(
