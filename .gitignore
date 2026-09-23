@@ -36,3 +36,8 @@ __pycache__
 k-wave-python/
 *.svg
 *.png
+
+# Python build and coverage artifacts
+*.egg-info/
+.coverage
+.coverage.*
