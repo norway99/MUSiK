@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 from .utils import geometry
 import matplotlib.pyplot as plt
@@ -99,10 +101,13 @@ class Transducer:
 
         self.label = label
         self.max_frequency = max_frequency
-        self.source_strength = 1e6
+        self.source_strength = source_strength
         self.cycles = cycles
         self.elements = elements
-        self.active_elements = np.arange(elements)
+        if active_elements is None:
+            self.active_elements = np.arange(elements)
+        else:
+            self.active_elements = np.asarray(active_elements)
         self.width = width
         self.height = height
         self.radius = radius
@@ -152,6 +157,7 @@ class Transducer:
 
     @classmethod
     def load(cls, transducer_dict):
+        transducer_dict = copy.deepcopy(transducer_dict)
         transducer = cls()
 
         ray_transforms = []
@@ -162,11 +168,15 @@ class Transducer:
         transducer_dict["active_elements"] = np.array(
             transducer_dict["active_elements"]
         )
-        transducer_dict["sensor_coords"] = np.array(transducer_dict["sensor_coords"])
+        if transducer_dict["sensor_coords"] is not None:
+            transducer_dict["sensor_coords"] = np.array(
+                transducer_dict["sensor_coords"]
+            )
         transducer_dict["steering_angles"] = np.array(
             transducer_dict["steering_angles"]
         )
-        transducer_dict["pulse"] = np.array(transducer_dict["pulse"])
+        if transducer_dict["pulse"] is not None:
+            transducer_dict["pulse"] = np.array(transducer_dict["pulse"])
         for key, value in transducer_dict.items():
             setattr(transducer, key, value)
         return transducer
@@ -653,6 +663,7 @@ class Focused(Transducer):
 
     @classmethod
     def load(cls, transducer_dict):
+        transducer_dict = copy.deepcopy(transducer_dict)
         transducer = cls()
 
         ray_transforms = []
@@ -663,11 +674,15 @@ class Focused(Transducer):
         transducer_dict["active_elements"] = np.array(
             transducer_dict["active_elements"]
         )
-        transducer_dict["sensor_coords"] = np.array(transducer_dict["sensor_coords"])
+        if transducer_dict["sensor_coords"] is not None:
+            transducer_dict["sensor_coords"] = np.array(
+                transducer_dict["sensor_coords"]
+            )
         transducer_dict["steering_angles"] = np.array(
             transducer_dict["steering_angles"]
         )
-        transducer_dict["pulse"] = np.array(transducer_dict["pulse"])
+        if transducer_dict["pulse"] is not None:
+            transducer_dict["pulse"] = np.array(transducer_dict["pulse"])
         for key, value in transducer_dict.items():
             setattr(transducer, key, value)
         return transducer
@@ -726,24 +741,24 @@ class Planewave(Transducer):
         transmit=True,
     ):
         super().__init__(
-            label,
-            max_frequency,
-            source_strength,
-            cycles,
-            elements,
-            active_elements,
-            width,
-            height,
-            radius,
-            focus_azimuth,
-            focus_elevation,
-            sensor_sampling_scheme,
-            sweep,
-            ray_num,
-            imaging_ndims,
-            transmit_apodization,
-            receive_apodization,
-            transmit,
+            label=label,
+            max_frequency=max_frequency,
+            source_strength=source_strength,
+            cycles=cycles,
+            elements=elements,
+            active_elements=active_elements,
+            width=width,
+            height=height,
+            radius=radius,
+            focus_azimuth=focus_azimuth,
+            focus_elevation=focus_elevation,
+            sensor_sampling_scheme=sensor_sampling_scheme,
+            sweep=sweep,
+            ray_num=ray_num,
+            imaging_ndims=imaging_ndims,
+            transmit_apodization=transmit_apodization,
+            receive_apodization=receive_apodization,
+            transmit=transmit,
         )
 
         self.set_steering_angles(imaging_ndims, sweep, self.ray_num)
@@ -769,6 +784,7 @@ class Planewave(Transducer):
 
     @classmethod
     def load(cls, transducer_dict):
+        transducer_dict = copy.deepcopy(transducer_dict)
         transducer = cls()
 
         ray_transforms = []
@@ -779,11 +795,15 @@ class Planewave(Transducer):
         transducer_dict["active_elements"] = np.array(
             transducer_dict["active_elements"]
         )
-        transducer_dict["sensor_coords"] = np.array(transducer_dict["sensor_coords"])
+        if transducer_dict["sensor_coords"] is not None:
+            transducer_dict["sensor_coords"] = np.array(
+                transducer_dict["sensor_coords"]
+            )
         transducer_dict["steering_angles"] = np.array(
             transducer_dict["steering_angles"]
         )
-        transducer_dict["pulse"] = np.array(transducer_dict["pulse"])
+        if transducer_dict["pulse"] is not None:
+            transducer_dict["pulse"] = np.array(transducer_dict["pulse"])
         for key, value in transducer_dict.items():
             setattr(transducer, key, value)
         return transducer

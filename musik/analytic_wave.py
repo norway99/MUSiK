@@ -4,8 +4,11 @@ import numpy as np
 def fourier_expression(Q, L, f, m, w, c_0):
     assert Q.shape[-1] == 3, "Q must be a 3D vector [x,y,z] or list of 3D vectors (Nx3)"
     Q = Q.astype(np.float128)
-    theta = np.arccos(Q[:, 2] / np.linalg.norm(Q, axis=-1))
-    theta = np.where(np.linalg.norm(Q) == 0, 0, theta)
+    distance = np.linalg.norm(Q, axis=-1)
+    cos_theta = np.divide(
+        Q[:, 2], distance, out=np.ones_like(distance), where=distance != 0
+    )
+    theta = np.arccos(np.clip(cos_theta, -1, 1))
     phi = np.arctan2(Q[:, 1], Q[:, 0])
     u = np.sin(theta) * np.cos(phi)
     exp1 = np.sum(
@@ -15,7 +18,11 @@ def fourier_expression(Q, L, f, m, w, c_0):
         axis=0,
     )
     exp2 = L * w * w * np.sinc(u * w * f / c_0)
-    exp3 = np.sqrt((c_0 / (2 * np.pi * np.linalg.norm(Q, axis=-1))))
+    exp3 = np.zeros_like(distance)
+    np.sqrt(
+        np.divide(c_0, 2 * np.pi * distance, out=exp3, where=distance != 0),
+        out=exp3,
+    )
     return exp1 * exp2 * exp3
 
 

@@ -79,19 +79,21 @@ class Phantom:
     @classmethod
     def from_source(cls, source_path):
         """Create a phantom instance from a source directory."""
-        phantom = cls()
         if source_path is not None:
-            phantom.load(source_path)
-        return phantom
+            return cls.load(source_path)
+        return cls()
 
     # save phantom to source dir containing tissues, mask, and source
     def save(self, filepath):
+        filepath = os.fspath(filepath)
         os.makedirs(filepath, exist_ok=True)
-        utils.dict_to_json(self.__save_tissues(), filepath + "/tissues.json")
-        utils.save_array(self.mask, filepath + "/mask.npz")
+        utils.dict_to_json(
+            self.__save_tissues(), os.path.join(filepath, "tissues.json")
+        )
+        utils.save_array(self.mask, os.path.join(filepath, "mask.npz"))
         if self.complete is not None:
             utils.save_array(
-                self.complete, filepath + "/complete.npy", compression=False
+                self.complete, os.path.join(filepath, "complete.npy"), compression=False
             )
         dictionary = self.__dict__.copy()
         dictionary.pop("mask")
@@ -99,30 +101,39 @@ class Phantom:
         dictionary.pop("rng")
         if "complete" in dictionary.keys():
             dictionary.pop("complete")
-        utils.dict_to_json(dict(dictionary), filepath + "/source.json")
+        utils.dict_to_json(dict(dictionary), os.path.join(filepath, "source.json"))
 
     # load phantom from source dir
     @classmethod
     def load(cls, source_path):
+        source_path = os.fspath(source_path)
         phantom = cls()
         assert os.path.exists(source_path), "provided path does not exist"
-        assert os.path.exists(source_path + "/tissues.json"), "missing tissues file"
-        assert os.path.exists(source_path + "/source.json"), "missing source file"
-        assert os.path.exists(source_path + "/mask.npz") or os.path.exists(
-            source_path + "/mask.npy"
+        assert os.path.exists(
+            os.path.join(source_path, "tissues.json")
+        ), "missing tissues file"
+        assert os.path.exists(
+            os.path.join(source_path, "source.json")
+        ), "missing source file"
+        assert os.path.exists(os.path.join(source_path, "mask.npz")) or os.path.exists(
+            os.path.join(source_path, "mask.npy")
         ), "missing mask file"
 
         phantom.tissues = phantom.__load_tissues(
-            utils.json_to_dict(source_path + "/tissues.json")
+            utils.json_to_dict(os.path.join(source_path, "tissues.json"))
         )
-        phantom.mask = utils.load_array(source_path + "/mask")
-        if os.path.exists(source_path + "/complete.npy"):
-            phantom.complete = utils.load_array(source_path + "/complete.npy")
-        elif os.path.exists(source_path + "/complete.npz"):
-            phantom.complete = utils.load_array(source_path + "/complete.npz")
+        phantom.mask = utils.load_array(os.path.join(source_path, "mask"))
+        if os.path.exists(os.path.join(source_path, "complete.npy")):
+            phantom.complete = utils.load_array(
+                os.path.join(source_path, "complete.npy")
+            )
+        elif os.path.exists(os.path.join(source_path, "complete.npz")):
+            phantom.complete = utils.load_array(
+                os.path.join(source_path, "complete.npz")
+            )
         else:
             phantom.complete = None
-        source = utils.json_to_dict(source_path + "/source.json")
+        source = utils.json_to_dict(os.path.join(source_path, "source.json"))
 
         phantom.rng = np.random.default_rng(source["seed"])
         phantom.voxel_dims = np.array(source["voxel_dims"])

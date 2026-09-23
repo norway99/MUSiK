@@ -62,6 +62,7 @@ def save_array(array, filepath, compression=True):
         filepath: Output path (extension will be added automatically).
         compression: If True, use compressed .npz format. Otherwise .npy.
     """
+    filepath = os.fspath(filepath)
     filepath = os.path.splitext(filepath)[0]
     if compression:
         filepath = filepath + ".npz"
@@ -83,6 +84,7 @@ def load_array(filepath):
     Returns:
         NumPy array, or None if file not found.
     """
+    filepath = os.fspath(filepath)
     ext = os.path.splitext(filepath)[1]
     if ext == ".npz":
         return np.load(filepath)["array"]

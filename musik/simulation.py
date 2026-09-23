@@ -112,8 +112,10 @@ class SimProperties:
         simprops = cls()
         for key in dictionary.keys():
             simprops.__setattr__(key, dictionary[key])
-        simprops.matrix_size = np.array(simprops.matrix_size)
-        simprops.bounds = np.array(simprops.bounds)
+        for key in (
+            "grid_size", "voxel_size", "PML_size", "matrix_size", "bounds"
+        ):
+            setattr(simprops, key, np.array(getattr(simprops, key)))
         return simprops
 
     def optimize_simulation_parameters(
@@ -159,6 +161,7 @@ class SimProperties:
     # Computation in kwave utilizes a fourier-space calculation, therefore computational grid sizes require small prime factorizations to be efficient
     def calc_matrix_size(self, grid_size, voxel_size, PML_size, transducer_dims=None):
         matrix_size = []
+        grid_size = np.array(grid_size, dtype=float, copy=True)
 
         # If matrix size smaller than transducer size, expand matrix size
         if transducer_dims is not None:

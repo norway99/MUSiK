@@ -383,9 +383,11 @@ class Transform:
         assert type(self) is type(other), (
             "Can only compose transformations of the same type"
         )
+        rotation = self.rotation * other.rotation
+        translation = self.rotation.apply(other.translation) + self.translation
         return self.__class__(
-            (self.rotation * other.rotation).as_euler("ZYX", degrees=False),
-            self.translation + other.translation,
+            rotation.as_euler("ZYX", degrees=False),
+            translation,
         )
 
     def plot_self(self, save=False, filepath="outputs/rotation.png"):
