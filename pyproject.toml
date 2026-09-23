@@ -1,0 +1,156 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "musik"
+version = "0.1.0"
+description = "Multi-transducer Ultrasound Simulations in K-wave"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Trevor Chan", email = "tjchan@seas.upenn.edu"},
+    {name = "Aparna Nair-kanneganti"},
+]
+maintainers = [
+    {name = "Trevor Chan", email = "tjchan@seas.upenn.edu"},
+]
+keywords = [
+    "ultrasound",
+    "simulation",
+    "k-wave",
+    "medical imaging",
+    "acoustics",
+    "beamforming",
+    "reconstruction",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.10"
+dependencies = [
+    # Core scientific computing
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "matplotlib>=3.7.0",
+    "h5py>=3.8.0",
+    # Image processing
+    "pillow>=9.4.0",
+    "scikit-image>=0.20.0",
+    "scikit-learn>=1.2.0",
+    # File formats and data handling
+    "mrcfile>=1.4.0",
+    "tqdm>=4.65.0",
+    # Type checking and validation
+    "beartype>=0.14.0",
+    "jaxtyping>=0.2.19",
+    "deprecated>=1.2.0",
+    # Additional utilities
+    "einops>=0.6.0",
+    "natsort>=8.3.0",
+    "plotly>=5.14.0",
+    "numba>=0.57.0",
+    "contourpy>=1.0.0",
+]
+
+[project.optional-dependencies]
+full = [
+    "imageio>=2.31.0",
+    "json5>=0.9.14",
+    "meshlib>=2.3.0",
+    "nptyping>=2.5.0",
+    "open3d>=0.17.0",
+    "ordered-set>=4.1.0",
+    "pandas>=2.0.0",
+    "pydicom>=2.4.0",
+    "pyquaternion>=0.9.9",
+    "PyWavelets>=1.4.0",
+    "tifffile>=2023.4.0",
+    "mcubes>=0.1.0",
+]
+dev = [
+    "pytest>=7.3.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.3.0",
+    "flake8>=6.0.0",
+    "mypy>=1.3.0",
+    "isort>=5.12.0",
+    "pre-commit>=3.3.0",
+]
+docs = [
+    "sphinx>=6.2.0",
+    "sphinx-rtd-theme>=1.2.0",
+    "sphinx-autodoc-typehints>=1.23.0",
+    "myst-parser>=1.0.0",
+    "nbsphinx>=0.9.0",
+]
+jupyter = [
+    "jupyter>=1.0.0",
+    "jupyterlab>=4.0.0",
+    "ipywidgets>=8.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/norway99/MUSiK"
+Documentation = "https://github.com/norway99/MUSiK/blob/main/docs/OVERVIEW.md"
+Repository = "https://github.com/norway99/MUSiK.git"
+Issues = "https://github.com/norway99/MUSiK/issues"
+
+[tool.setuptools]
+packages = ["musik", "musik.utils"]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.package-data]
+musik = ["py.typed"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310", "py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+    | k-wave-python
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+skip = ["k-wave-python"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["k-wave-python", "demos"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=musik --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["musik"]
+omit = ["musik/utils/diff_geo.py"]

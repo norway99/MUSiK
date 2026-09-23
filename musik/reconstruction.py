@@ -76,11 +76,26 @@ def _process_line_worker(args):
 
 
 class PreprocessedDataLoader:
-    """
-    Lazy-loading accessor for preprocessed data stored in batch files.
+    """Lazy-loading accessor for preprocessed data stored in batch files.
 
-    Loads batches on-demand and keeps only a limited number in memory
-    to prevent OOM errors with large datasets.
+    Enables memory-efficient access to large preprocessed datasets by loading
+    batches on-demand and maintaining an LRU cache of recently accessed batches.
+    This prevents out-of-memory errors when working with datasets too large to
+    fit in RAM.
+
+    Attributes:
+        save_dir: Directory containing preprocess_batch_*.npz files.
+        max_cached_batches: Maximum number of batches to keep in memory.
+        batch_files: List of paths to batch files.
+        batch_index: List of (start_idx, end_idx, filepath) tuples.
+        total_length: Total number of preprocessed rays across all batches.
+
+    Example:
+        >>> loader = PreprocessedDataLoader('./preprocessed_data', max_cached_batches=3)
+        >>> len(loader)  # Total number of rays
+        50000
+        >>> times, coords, processed = loader.get_range(0, 100)  # Load first 100 rays
+        >>> loader.clear_cache()  # Free memory
     """
 
     def __init__(self, save_dir, max_cached_batches=2):
@@ -180,6 +195,31 @@ class PreprocessedDataLoader:
 
 
 class Reconstruction:
+    """Base class for ultrasound image reconstruction algorithms.
+
+    Reconstruction provides common functionality for converting raw simulation
+    results into images. It loads experiment configuration and results, and
+    provides the foundation for specific reconstruction algorithms like DAS
+    and Compounding.
+
+    Attributes:
+        simulation_path: Path to the experiment directory.
+        sim_properties: SimProperties instance from the experiment.
+        phantom: Phantom instance from the experiment.
+        transducer_set: TransducerSet instance from the experiment.
+        sensor: Sensor instance from the experiment.
+        results: Results instance for accessing simulation outputs.
+        experiment: The loaded Experiment instance.
+
+    Args:
+        experiment: Either an Experiment instance or a string path to a
+            saved experiment directory.
+
+    Example:
+        >>> recon = Reconstruction('./my_experiment')
+        >>> print(len(recon))  # Number of rays to reconstruct
+    """
+
     def __init__(
         self,
         experiment=None,
@@ -220,6 +260,30 @@ class Reconstruction:
 
 
 class DAS(Reconstruction):
+    """Delay-and-Sum (DAS) beamforming reconstruction.
+
+    DAS implements standard delay-and-sum beamforming for ultrasound image
+    reconstruction. It preprocesses raw RF signals by applying time delays
+    based on geometric path lengths, then sums contributions from all
+    transducer elements.
+
+    The reconstruction workflow:
+    1. Preprocess data: Apply beamforming, filtering, and time-gain compensation
+    2. Convert time samples to 3D coordinates using transducer geometry
+    3. Interpolate preprocessed data onto output grid
+    4. Combine contributions from all transducers
+
+    Key methods:
+        preprocess_data: Convert raw signals to (time, coords, intensity) tuples
+        get_image: Generate 2D or 3D image from preprocessed data
+        get_signals: Get per-transducer interpolated signals
+
+    Example:
+        >>> das = DAS('./my_experiment')
+        >>> times, coords, processed = das.preprocess_data(workers=8)
+        >>> image = das.get_image(bounds=0.05, matsize=256, dimensions=3)
+    """
+
     def __init__(self, experiment=None):
         # for transducer in experiment.transducer_set.transducers:
         # if not isinstance(transducer, Focused):
@@ -980,6 +1044,32 @@ class DAS(Reconstruction):
 
 
 class Compounding(Reconstruction):
+    """Multi-view compounding reconstruction for improved image quality.
+
+    Compounding performs image reconstruction by combining signals from
+    multiple receive elements and multiple transmit angles. It supports
+    pressure field weighting for excitation compensation and can produce
+    both 2D and 3D volumetric images.
+
+    Unlike DAS which performs simple delay-and-sum per scan line, Compounding
+    considers the full element-to-element geometry for more accurate
+    beamforming of multi-element arrays.
+
+    Key methods:
+        compound: Full multi-view reconstruction with optional pressure field
+        scanline_reconstruction: Single ray reconstruction with apodization
+        selective_compound: Reconstruct using subset of transducers
+
+    Attributes:
+        Inherits all attributes from Reconstruction.
+
+    Example:
+        >>> comp = Compounding('./my_experiment')
+        >>> image = comp.compound(workers=8, resolution_multiplier=2)
+        >>> # Or reconstruct specific transducers
+        >>> partial = comp.selective_compound([0, 1, 2], workers=4)
+    """
+
     def __init__(self, experiment=None):
         super().__init__(experiment)
 

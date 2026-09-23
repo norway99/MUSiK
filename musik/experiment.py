@@ -21,6 +21,24 @@ SENTINEL = "sentinel"
 
 @dataclass
 class Results:
+    """Provides indexed access to saved simulation result files.
+
+    Results manages the collection of signal files produced by simulation runs,
+    allowing indexed access to individual results without loading all data into
+    memory at once.
+
+    Attributes:
+        results_path: Directory path containing signal_*.npy result files.
+        result_paths: Sorted list of paths to signal result files (auto-populated).
+        other_signal_paths: Sorted list of paths to additional recorded signals.
+        length: Number of available result files.
+        result_shape: Shape of result arrays (time_steps, num_elements).
+
+    Example:
+        >>> results = Results('./experiment/results')
+        >>> time_array, signals = results[0]  # Load first result
+        >>> available = results.indices()     # Get list of available indices
+    """
     results_path: str = None
     result_paths: list = field(init=False)
     other_signal_paths: list = field(init=False)
@@ -57,6 +75,48 @@ class Results:
 
 @dataclass
 class Experiment:
+    """Orchestrates multi-process execution of acoustic simulations.
+
+    Experiment is the central coordinator for running large-scale ultrasound
+    simulations. It combines all simulation components (phantom, transducers,
+    sensor, properties) and manages parallel execution across multiple workers
+    or compute nodes.
+
+    The experiment workflow:
+    1. Create experiment with all components
+    2. Save experiment configuration to disk
+    3. Run simulations (single-threaded, multi-process, or SLURM)
+    4. Load results for reconstruction
+
+    Attributes:
+        simulation_path: Directory for saving experiment config and results.
+        sim_properties: SimProperties instance for grid/timing configuration.
+        phantom: Phantom instance defining the tissue volume.
+        transducer_set: TransducerSet with transducer configurations and poses.
+        sensor: Sensor instance for signal capture configuration.
+        nodes: Number of compute nodes for distributed execution.
+        results: Results instance for accessing saved simulation outputs.
+        indices: List of simulation indices to run.
+        gpu: Whether to use GPU acceleration (default True).
+        workers: Number of parallel worker processes (default 2).
+        additional_keys: Additional k-Wave outputs to record (e.g., ['p_max']).
+        repeat: Batch job mode flag (-1 for static index assignment).
+
+    Example:
+        >>> exp = Experiment(
+        ...     simulation_path='./my_experiment',
+        ...     sim_properties=props,
+        ...     phantom=phantom,
+        ...     transducer_set=tx_set,
+        ...     sensor=sensor,
+        ... )
+        >>> exp.save()
+        >>> exp.run(workers=4)  # Run with 4 parallel workers
+
+        >>> # Later, load and access results
+        >>> exp = Experiment.load('./my_experiment')
+        >>> time, signals = exp.results[0]
+    """
     simulation_path: str = None
     sim_properties: SimProperties = None
     phantom: Phantom = None
@@ -99,8 +159,16 @@ class Experiment:
             for transducer in self.transducer_set.transmit_transducers()
         ])
 
-    # save experiment
     def save(self, filepath=None):
+        """Save experiment configuration to disk.
+
+        Saves all experiment components (SimProperties, Phantom, TransducerSet,
+        Sensor) and metadata to the specified directory. Must be called before
+        running simulations.
+
+        Args:
+            filepath: Directory path for saving. If None, uses simulation_path.
+        """
         if filepath is None:
             filepath = self.simulation_path
         if not os.path.exists(filepath):
@@ -118,9 +186,22 @@ class Experiment:
         }
         utils.dict_to_json(dictionary, os.path.join(filepath, f"experiment.json"))
 
-    # load experiment
     @classmethod
     def load(cls, filepath):
+        """Load a saved experiment from disk.
+
+        Reconstructs all experiment components from saved files and initializes
+        the Results object for accessing simulation outputs.
+
+        Args:
+            filepath: Directory path containing saved experiment files.
+
+        Returns:
+            Experiment instance with all components loaded.
+
+        Raises:
+            FileNotFoundError: If required configuration files are missing.
+        """
         experiment = cls(simulation_path=filepath)
         experiment.sim_properties = SimProperties.load(
             os.path.join(filepath, f"sim_properties.json")
@@ -167,16 +248,45 @@ class Experiment:
         else:
             return sorted(list(set(indices) - set(self.results.indices())))
 
-    # subdivide
     def subdivide(self, indices=None, repeat=False):
+        """Split simulation indices across compute nodes.
+
+        Divides the work evenly across self.nodes for distributed execution
+        (e.g., SLURM array jobs).
+
+        Args:
+            indices: List of indices to subdivide. If None, uses pending indices.
+            repeat: If True, include indices that already have results.
+
+        Returns:
+            List of numpy arrays, one per node, containing that node's indices.
+            Returns None if no indices to run.
+        """
         if indices is None:
             indices = self.indices_to_run(indices, repeat=repeat)
         if len(indices) == 0:
             return None
         return np.array_split(np.array(indices), self.nodes)
 
-    # run simulations by node
     def run(self, node=None, dry=False, repeat=False, workers=None, dry_fast=False):
+        """Execute simulations for all pending indices.
+
+        Runs acoustic simulations using a producer-consumer pattern where
+        preparation workers build k-Wave objects and a run worker executes
+        the GPU simulations.
+
+        Args:
+            node: Compute node index for distributed execution. If None,
+                runs all nodes sequentially.
+            dry: If True, perform a dry run without actual simulation. Use 
+                for initializing sensor components for reconstruction. after
+                loading complete results.
+            repeat: If True, re-run simulations even if results exist.
+            workers: Number of parallel preparation workers. If None,
+                uses self.workers.
+            dry_fast: If True and dry=True, only dry-run one ray per
+                transducer (assumes identical transducers!).
+        """
         if workers is None:
             workers = self.workers
         assert os.path.exists(self.simulation_path), (

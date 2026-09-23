@@ -8,6 +8,42 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Transform:
+    """3D rigid transformation combining rotation and translation.
+
+    Transform represents a rigid body transformation in 3D space, consisting
+    of a rotation (stored as scipy Rotation) and a translation vector. It
+    supports multiple rotation representations and can be applied to points,
+    arrays of points, or 3D image volumes.
+
+    Transforms can be composed using the * operator: (A * B) applies B first,
+    then A, consistent with matrix multiplication order.
+
+    Attributes:
+        rotation: Rotation specified as Euler angles (radians) or matrix.
+            Default is (0, 0, 0) = identity rotation.
+        translation: Translation vector in meters. Default is (0, 0, 0).
+        from_matrix: If True, interpret rotation as a 3x3 rotation matrix.
+        about_axis: If True, interpret rotation as a rotation vector (axis-angle).
+        intrinsic: If True, use intrinsic (body-fixed) Euler angles (ZYX order).
+            If False, use extrinsic (space-fixed) angles.
+        ordering: Custom Euler angle ordering (e.g., 'xyz', 'ZYX').
+
+    Example:
+        >>> # Create transform with 45° rotation about Z and translation
+        >>> t = Transform(rotation=[np.pi/4, 0, 0], translation=[0.01, 0, 0.05])
+
+        >>> # Apply to a single point
+        >>> new_point = t.apply_to_point([0, 0, 0])
+
+        >>> # Apply to array of points (N x 3)
+        >>> new_points = t.apply_to_points(point_array)
+
+        >>> # Compose transforms
+        >>> combined = t1 * t2  # Apply t2 first, then t1
+
+        >>> # Get homogeneous transformation matrix
+        >>> matrix = t.get()  # 4x4 matrix
+    """
     rotation: tuple = field(default_factory=lambda: (0, 0, 0))
     translation: np.ndarray = field(default_factory=lambda: np.array((0, 0, 0)))
     from_matrix: bool = False
@@ -442,6 +478,25 @@ def generate_pose_spherical(
     roll_fraction=0,
     rng=None,
 ):
+    """Generate a random pose on a spherical surface pointing toward origin.
+
+    Creates a position on a sphere of radius r_mean and an orientation
+    pointing toward the center. Useful for arranging transducers around
+    a target volume.
+
+    Args:
+        r_mean: Mean radius of the sphere in meters.
+        r_std: Standard deviation of radius for random variation.
+        view_std: Standard deviation for orientation jitter (radians).
+        yaw_fraction: Fraction of full yaw range to use (0-1).
+        pitch_fraction: Fraction of full pitch range to use (0-1).
+        roll_fraction: Fraction of full roll range to use (0-1).
+        rng: NumPy random generator for reproducibility.
+
+    Returns:
+        Tuple of (orientation, position) where orientation is Euler angles
+        (ZYX intrinsic) and position is (x, y, z) coordinates.
+    """
     if rng is not None:
         rand = rng.random
         randn = rng.normal
