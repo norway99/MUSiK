@@ -3,7 +3,27 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from musik.simulation import SimProperties, tempdir
+from musik.simulation import SimProperties, _make_medium, tempdir
+
+
+def test_make_medium_casts_maps_and_uses_configured_properties():
+    sim_phantom = np.array(
+        [
+            [[[1500, 2400]]],
+            [[[1000, 1500]]],
+        ],
+        dtype=np.float16,
+    )
+    props = SimProperties(alpha_coeff=0.5, alpha_power=1.5, bona=4)
+
+    medium = _make_medium(sim_phantom, props)
+
+    assert medium.sound_speed.dtype == np.float32
+    assert medium.density.dtype == np.float32
+    assert medium.alpha_coeff == 0.5
+    assert medium.alpha_power == 1.5
+    assert medium.BonA == 4
+    assert np.all(np.isfinite(medium.sound_speed**medium.alpha_power))
 
 
 def test_sim_properties_computes_grid_metadata():
