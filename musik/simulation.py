@@ -25,6 +25,19 @@ import logging
 logging.getLogger().setLevel(logging.ERROR)
 
 
+def _make_medium(sim_phantom, sim_properties):
+    """Build a k-Wave medium with numerically safe property maps."""
+    sound_speed_map = np.asarray(sim_phantom[0], dtype=np.float32)
+    density_map = np.asarray(sim_phantom[1], dtype=np.float32)
+    return kwave.kmedium.kWaveMedium(
+        sound_speed=sound_speed_map,
+        density=density_map,
+        alpha_coeff=sim_properties.alpha_coeff,
+        alpha_power=sim_properties.alpha_power,
+        BonA=sim_properties.bona,
+    )
+
+
 @contextmanager
 def tempdir():
     path = tempfile.mkdtemp()
@@ -112,8 +125,10 @@ class SimProperties:
         simprops = cls()
         for key in dictionary.keys():
             simprops.__setattr__(key, dictionary[key])
-        simprops.matrix_size = np.array(simprops.matrix_size)
-        simprops.bounds = np.array(simprops.bounds)
+        for key in (
+            "grid_size", "voxel_size", "PML_size", "matrix_size", "bounds"
+        ):
+            setattr(simprops, key, np.array(getattr(simprops, key)))
         return simprops
 
     def optimize_simulation_parameters(
@@ -159,6 +174,7 @@ class SimProperties:
     # Computation in kwave utilizes a fourier-space calculation, therefore computational grid sizes require small prime factorizations to be efficient
     def calc_matrix_size(self, grid_size, voxel_size, PML_size, transducer_dims=None):
         matrix_size = []
+        grid_size = np.array(grid_size, dtype=float, copy=True)
 
         # If matrix size smaller than transducer size, expand matrix size
         if transducer_dims is not None:
@@ -422,10 +438,6 @@ class Simulation:
 
         kgrid.makeTime(c0, t_end=t_end)
 
-        # set up phantom
-        sound_speed_map = sim_phantom[0]
-        density_map = sim_phantom[1]
-
         # fetch not_a_transducer object from transducer
         sim_transducer.make_pulse(kgrid.dt, c0, rho0)
         not_transducer = sim_transducer.make_notatransducer(
@@ -435,17 +447,7 @@ class Simulation:
         if dry:
             return (None, None, None, None, None, None, None, None)
 
-        # setup medium object
-        medium = kwave.kmedium.kWaveMedium(
-            sound_speed=None,  # will be set later
-            alpha_coeff=0.75,
-            alpha_power=1.5,
-            BonA=6,
-        )
-        medium_position = 0
-
-        medium.sound_speed = sound_speed_map
-        medium.density = density_map
+        medium = _make_medium(sim_phantom, self.sim_properties)
 
         sensor_mask, discretized_sensor_coords = sim_sensor.make_sensor_mask(
             sim_transducer, not_transducer, self.sim_properties.voxel_size, affine

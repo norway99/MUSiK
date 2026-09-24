@@ -40,20 +40,21 @@ class TransducerSet:
 
     def __init__(
         self,
-        transducers=[],
-        poses=[],
+        transducers=None,
+        poses=None,
         seed=None,
     ):
-        self.transducers = transducers  # list of transducers
-        self.n_transducers = len(transducers)
-        self.n_transmit = len([0 for t in transducers if t.transmit])
-        if len(poses) == 0:
+        self.transducers = list(transducers) if transducers is not None else []
+        self.n_transducers = len(self.transducers)
+        self.n_transmit = len([0 for t in self.transducers if t.transmit])
+        if poses is None or len(poses) == 0:
             self.poses = [None for i in range(self.n_transducers)]
         else:
-            self.poses = poses
+            if len(poses) != self.n_transducers:
+                raise ValueError("poses must contain one entry per transducer")
+            self.poses = list(poses)
         self.seed = seed
-        if seed is not None:
-            self.rng = np.random.default_rng(seed)
+        self.rng = np.random.default_rng(seed)
 
     def __getitem__(self, index):
         return self.transducers[index], self.poses[index]
@@ -113,6 +114,9 @@ class TransducerSet:
                 - 'target': Point to aim transducers at
                 - 'height_range': (min, max) z-coordinates (cylindrical)
         """
+        if extrinsics_kwargs is None:
+            extrinsics_kwargs = {}
+
         if shape == "constrained":
             if tissue_mask is None or target is None or attenuation_threshold is None:
                 raise Exception(
@@ -163,7 +167,7 @@ class TransducerSet:
         ]
 
     def assign_pose(self, index, transform):
-        assert index <= len(self), (
+        assert 0 <= index < len(self), (
             "Index out of range. No transducer exists at index {}.".format(index)
         )
         self.poses[index] = transform
@@ -243,7 +247,7 @@ class TransducerSet:
         else:
             return ctr
 
-    def add_transducer(self, trans=None, load_file=None):
+    def add_transducer(self, trans=None, load_file=None, pose=None):
         if trans is None and load_file is None:
             raise Exception(
                 "Please supply either a transducer object or a .json file from which to load a transducer object"
@@ -251,7 +255,9 @@ class TransducerSet:
         elif trans is None:
             trans = Transducer.load(load_file)
         self.transducers.append(trans)
+        self.poses.append(pose)
         self.n_transducers += 1
+        self.n_transmit += int(trans.transmit)
 
     def remove_transducer(
         self, label=None, index=None
@@ -262,9 +268,10 @@ class TransducerSet:
             )
         elif label is not None:
             index = self.find_transducer(label)
-        self.transducers.pop(index)
+        transducer = self.transducers.pop(index)
         self.poses.pop(index)
         self.n_transducers -= 1
+        self.n_transmit -= int(transducer.transmit)
 
     def get_transducers(self):
         return self.transducers
