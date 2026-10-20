@@ -15,9 +15,8 @@ is generated once here, so every scan line in that phase samples the same scatte
 import argparse
 
 import numpy as np
-from scipy.ndimage import zoom
 
-from common import Paths, heart_center_m, load_config, load_mask, save_json
+from common import Paths, heart_center_m, load_config, load_cropped_mask, load_mask, save_json
 
 from musik import phantom, tissue
 
@@ -44,10 +43,20 @@ def make_tissues(config: dict) -> dict:
     }
 
 
+def resample_nearest(labels: np.ndarray, spacing_m: np.ndarray, voxel_m: float) -> np.ndarray:
+    """Nearest-neighbour resample that keeps both grids centered, as MUSiK places them in the world."""
+    out_shape = np.round(np.array(labels.shape) * spacing_m / voxel_m).astype(int)
+    index = [
+        np.clip(np.round((np.arange(n) - n / 2) * voxel_m / s + m / 2).astype(int), 0, m - 1)
+        for n, m, s in zip(out_shape, labels.shape, spacing_m)
+    ]
+    return labels[np.ix_(*index)]
+
+
 def build_phantom(mask_frame: np.ndarray, config: dict, tissues: dict) -> phantom.Phantom:
     spacing_m = np.array(config["mask"]["spacing_mm"]) * 1e-3
     voxel_m = config["phantom"]["voxel_size_mm"] * 1e-3
-    labels = zoom(mask_frame, spacing_m / voxel_m, order=0)
+    labels = resample_nearest(mask_frame, spacing_m, voxel_m)
 
     default = tissues[config["default_tissue"]]
     result = phantom.Phantom(
@@ -74,20 +83,36 @@ def main():
     parser.add_argument("--config", default=None)
     parser.add_argument("--frames", type=int, nargs="*", default=None)
     parser.add_argument("--mask-only", action="store_true", help="only crop and cache the mask")
+    parser.add_argument("--reuse-mask", action="store_true", help="skip reading the raw mask and use the cached crop")
     args = parser.parse_args()
 
     config = load_config(args.config)
     paths = Paths(config)
     paths.phantoms.mkdir(parents=True, exist_ok=True)
     spacing_m = np.array(config["mask"]["spacing_mm"]) * 1e-3
-
-    mask, crop_origin = crop_with_margin(load_mask(config), spacing_m, config["phantom"]["margin_mm"] * 1e-3)
-    np.save(paths.phantoms / "mask.npy", mask)
-    print(f"cropped mask {mask.shape[1:]} ({np.round(np.array(mask.shape[1:]) * spacing_m * 1e3).tolist()} mm)")
-
-    # Values every later script needs without reloading the full mask.
-    centers = np.array([heart_center_m(mask[f], spacing_m, config["mask"]["heart_labels"]) for f in range(mask.shape[0])])
     tissues = make_tissues(config)
+
+    if args.reuse_mask:
+        # The cached crop already fixes the margin; only the tissue build reruns.
+        mask = load_cropped_mask(paths)
+    else:
+        mask, crop_origin = crop_with_margin(load_mask(config), spacing_m, config["phantom"]["margin_mm"] * 1e-3)
+        np.save(paths.phantoms / "mask.npy", mask)
+        print(f"cropped mask {mask.shape[1:]} ({np.round(np.array(mask.shape[1:]) * spacing_m * 1e3).tolist()} mm)")
+        write_info(mask, crop_origin, spacing_m, config, tissues, paths)
+    if args.mask_only:
+        return
+
+    frames = args.frames if args.frames else range(mask.shape[0])
+    for frame in frames:
+        built = build_phantom(np.asarray(mask[frame]), config, tissues)
+        built.save(paths.phantom(frame))
+        print(f"frame {frame:02d}: {built.matrix_dims.tolist()} voxels -> {paths.phantom(frame)}")
+
+
+def write_info(mask: np.ndarray, crop_origin: np.ndarray, spacing_m: np.ndarray, config: dict, tissues: dict, paths: Paths) -> None:
+    """Values every later script needs without reloading the full mask."""
+    centers = np.array([heart_center_m(mask[f], spacing_m, config["mask"]["heart_labels"]) for f in range(mask.shape[0])])
     save_json(
         {
             "mask_shape": list(mask.shape),
@@ -101,14 +126,6 @@ def main():
         },
         paths.phantoms / "phantom_info.json",
     )
-    if args.mask_only:
-        return
-
-    frames = args.frames if args.frames else range(mask.shape[0])
-    for frame in frames:
-        built = build_phantom(mask[frame], config, tissues)
-        built.save(paths.phantom(frame))
-        print(f"frame {frame:02d}: {built.matrix_dims.tolist()} voxels -> {paths.phantom(frame)}")
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 from scipy.interpolate import CubicSpline
-from scipy.ndimage import map_coordinates
+from scipy.ndimage import center_of_mass, map_coordinates
 from scipy.spatial.transform import Rotation, RotationSpline
 
 HERE = Path(__file__).resolve().parent
@@ -95,8 +95,10 @@ def load_cropped_mask(paths: Paths) -> np.ndarray:
 
 def heart_center_m(mask_frame: np.ndarray, spacing_m: np.ndarray, heart_labels: list[int]) -> np.ndarray:
     """Centroid of the heart labels in the world frame (grid centered at its middle)."""
-    indices = np.argwhere(np.isin(mask_frame, heart_labels))
-    return (indices.mean(axis=0) - np.array(mask_frame.shape) / 2.0) * spacing_m
+    lookup = np.zeros(256, dtype=bool)
+    lookup[heart_labels] = True
+    centroid = np.array(center_of_mass(lookup[mask_frame]))
+    return (centroid - np.array(mask_frame.shape) / 2.0) * spacing_m
 
 
 def sample_labels(mask_frame: np.ndarray, spacing_m: np.ndarray, world: np.ndarray) -> np.ndarray:
