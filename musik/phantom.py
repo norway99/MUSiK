@@ -12,6 +12,55 @@ from typing import Dict, Tuple, Optional, Any, Union, List, Callable
 
 # phantom bounds in global coords are NOT necessarily -1 to 1
 
+_MIX_1 = np.uint64(0xBF58476D1CE4E5B9)
+_MIX_2 = np.uint64(0x94D049BB133111EB)
+_GOLDEN = np.uint64(0x9E3779B97F4A7C15)
+
+
+def _mix64(x):
+    """SplitMix64 finalizer: a fast, well-distributed hash of a uint64 array."""
+    x = (x ^ (x >> np.uint64(30))) * _MIX_1
+    x = (x ^ (x >> np.uint64(27))) * _MIX_2
+    return x ^ (x >> np.uint64(31))
+
+
+def _texture_key(seed, label):
+    """64-bit key identifying one tissue's texture field under a phantom seed."""
+    return (int(seed) * 0x9E3779B97F4A7C15 + int(label) * 0xD1B54A32D192ED03 + 1) % 2**64
+
+
+def _hashed_normal(cells, key):
+    """Standard normal values, float32, that depend only on integer lattice cells (n, 3) and `key`."""
+    h = _mix64(np.full(len(cells), key, dtype=np.uint64))
+    for axis in range(3):
+        h = _mix64(h ^ cells[:, axis].astype(np.int64).view(np.uint64))
+    # Box-Muller from two uniforms taken from independent hashes.
+    u1 = ((h >> np.uint64(11)).astype(np.float64) + 0.5) * 2.0**-53
+    u2 = (_mix64(h ^ _GOLDEN) >> np.uint64(11)).astype(np.float64) * 2.0**-53
+    return (np.sqrt(-2.0 * np.log(u1)) * np.cos(2.0 * np.pi * u2)).astype(np.float32)
+
+
+def _world_noise(points, spacing, key, interpolate):
+    """Unit-variance lattice noise at world `points` (n, 3), fixed in space.
+
+    Each lattice cell of size `spacing` holds one hashed normal value. Without
+    `interpolate`, a point takes its cell's value (white noise at the lattice
+    resolution); with it, values are trilinear between lattice nodes, matching the
+    linearly upsampled coarse grid of `Phantom.generate_tissue`.
+    """
+    scaled = points / spacing
+    if not interpolate:
+        return _hashed_normal(np.floor(scaled).astype(np.int64), key)
+    # Hash each lattice node once over the points' bounding box, then interpolate.
+    lo = np.floor(scaled.min(axis=0)).astype(np.int64)
+    hi = np.floor(scaled.max(axis=0)).astype(np.int64) + 2
+    nodes = np.stack(
+        np.meshgrid(*[np.arange(a, b) for a, b in zip(lo, hi)], indexing="ij"), axis=-1
+    )
+    node_noise = _hashed_normal(nodes.reshape(-1, 3), key).reshape(nodes.shape[:3])
+    return scipy.ndimage.map_coordinates(node_noise, (scaled - lo).T, order=1)
+
+
 
 @dataclass
 class Phantom:
@@ -24,6 +73,8 @@ class Phantom:
         baseline: Tuple of baseline sound speed and density values.
         seed: The seed for the random number generator used to generate the phantom.
         from_mask: Whether the phantom was created from a mask.
+        world_texture: Generate tissue texture as a deterministic function of world position
+            (requires a seed), so every simulation that overlaps a region sees the same scatterers.
         mask: A 3D array representing the phantom mask.
         tissues: A dictionary of Tissue objects representing the different types of tissue in the phantom.
         complete: The complete phantom representation.
@@ -53,6 +104,7 @@ class Phantom:
     baseline: Tuple[float, float] = (1500, 1000)
     seed: Optional[int] = None
     from_mask: bool = True
+    world_texture: bool = False
     mask: np.ndarray = field(init=False)
     tissues: Dict[str, Tissue] = field(default_factory=dict, init=False)
     complete: Optional[np.ndarray] = field(default=None, init=False)
@@ -138,7 +190,9 @@ class Phantom:
         phantom.rng = np.random.default_rng(source["seed"])
         phantom.voxel_dims = np.array(source["voxel_dims"])
         phantom.matrix_dims = np.array(source["matrix_dims"], dtype=int)
+        phantom.seed = source["seed"]
         phantom.from_mask = source["from_mask"]
+        phantom.world_texture = source.get("world_texture", False)
         phantom.baseline = source["baseline"]
         if "default_tissue" in source.keys():
             phantom.default_tissue = source["default_tissue"]
@@ -412,16 +466,22 @@ class Phantom:
         # Implement anisotropy later
 
         # if multiple scatterers in one voxel, modify std of noise: in 3 dimensions, std of iid gaussians scales with ^3/2
+        # Note: the exponent below is 1/2, not the 3/2 described above. With 1/2, speckle intensity
+        # scales as sigma^2 * scale * voxel^2, so it shifts with voxel size (on the simulation grid,
+        # voxel ~ 1/f, giving ~f^2 rather than the Rayleigh f^4). With 3/2 it would be
+        # sigma^2 * scale^3: independent of voxel size and consistent with the correlated branch.
+        # Changing it re-balances tissues with different `scale` in existing phantoms.
         if np.mean(size) > np.mean(shape):
             return tuple(shape), 1, scaling_factor**0.5
         return size, scaling_factor, 1.0
 
-    def __tissue_values(self, tissue, selection, voxel_size, order=1):
+    def __tissue_values(self, tissue, selection, voxel_size, rng, positions, order=1):
         """Sound speed for the voxels in `selection`, matching `generate_tissue` statistically.
 
         Noise is drawn only where the tissue is: per selected voxel for white noise, or,
         for correlated texture, on the part of `generate_tissue`'s coarse grid that the
-        selection touches, sampled at the same coordinates `zoom` would use.
+        selection touches, sampled at the same coordinates `zoom` would use. With
+        `world_texture`, noise instead comes from a hash of world-space lattice cells.
         """
         count = int(np.count_nonzero(selection))
         if tissue.sigma == 0:
@@ -430,31 +490,65 @@ class Phantom:
         size, scaling_factor, std_scale = self.__texture_parameters(
             tissue, selection.shape, voxel_size
         )
+        if self.world_texture:
+            key = _texture_key(self.seed, tissue.label)
+            spacing = scaling_factor * np.asarray(voxel_size, dtype=np.float64)
+            noise = _world_noise(positions(selection), spacing, key, interpolate=scaling_factor != 1)
+            return np.float32(tissue.c) + noise * np.float32(tissue.sigma * std_scale)
+
         if scaling_factor == 1:
-            noise = self.rng.standard_normal(count, dtype=np.float32)
+            noise = rng.standard_normal(count, dtype=np.float32)
             return np.float32(tissue.c) + noise * np.float32(tissue.sigma * std_scale)
 
         # `zoom` maps output index i to input coordinate i * (n_in - 1) / (n_out - 1).
         size = np.array(size)
         zoomed = np.array([int(round(n * scaling_factor)) for n in size])
         ratio = (size - 1) / np.maximum(zoomed - 1, 1)
-        coords = np.nonzero(selection)
-        positions = [index * r for index, r in zip(coords, ratio)]
-        lo = np.array([int(np.floor(p.min())) for p in positions])
-        hi = np.array([int(np.floor(p.max())) + 2 for p in positions])
+        coarse_coords = [index * r for index, r in zip(np.nonzero(selection), ratio)]
+        lo = np.array([int(np.floor(p.min())) for p in coarse_coords])
+        hi = np.array([int(np.floor(p.max())) + 2 for p in coarse_coords])
         hi = np.minimum(hi, size)
-        coarse = np.float32(tissue.c) + self.rng.standard_normal(tuple(hi - lo), dtype=np.float32) * np.float32(tissue.sigma)
+        coarse = np.float32(tissue.c) + rng.standard_normal(tuple(hi - lo), dtype=np.float32) * np.float32(tissue.sigma)
         return scipy.ndimage.map_coordinates(
-            coarse, [p - l for p, l in zip(positions, lo)], order=order
+            coarse, [p - l for p, l in zip(coarse_coords, lo)], order=order
         )
 
-    def make_complete(self, mask, voxel_size):
+    def simulation_rng(self, index):
+        """Random stream for one simulation, independent across indices and worker processes.
+
+        Forked workers inherit identical copies of `self.rng`, so drawing from it per
+        simulation repeats noise between workers. With a seed, the stream is derived
+        from (seed, index) and is reproducible; without one, it is fresh entropy.
+        """
+        if self.seed is None:
+            return np.random.default_rng()
+        return np.random.default_rng(np.random.SeedSequence(self.seed, spawn_key=(int(index),)))
+
+    def make_complete(self, mask, voxel_size, rng=None, world=None):
         """Sound speed and density maps, shape (2, *mask.shape), for a label mask.
 
         Each tissue's texture is generated only over the voxels it occupies (see
         `generate_tissue` for the texture model). Voxels whose label matches no tissue
         take the default tissue.
+
+        Args:
+            mask: Label array.
+            voxel_size: Voxel size of `mask` in meters.
+            rng: Random generator for the texture (default `self.rng`); unused with `world_texture`.
+            world: World positions (*mask.shape, 3) of the voxels, used with `world_texture`.
+                Defaults to `mask` being this phantom's own grid, centered on the origin.
         """
+        if rng is None:
+            rng = self.rng
+        if self.world_texture and self.seed is None:
+            raise ValueError("world_texture needs a seed so every simulation sees the same scatterers")
+
+        def positions(selection):
+            if world is not None:
+                return world[selection]
+            voxel = np.asarray(voxel_size, dtype=np.float64)
+            return (np.argwhere(selection) - np.array(mask.shape) / 2) * voxel
+
         complete = np.empty((2, *mask.shape), dtype=np.float32)
         known = [t.label for t in self.tissues.values()]
         unmatched = ~np.isin(mask, known)
@@ -467,7 +561,7 @@ class Phantom:
                 selection |= unmatched
             if not selection.any():
                 continue
-            values = self.__tissue_values(tissue, selection, voxel_size)
+            values = self.__tissue_values(tissue, selection, voxel_size, rng, positions)
             complete[0][selection] = values
             if tissue.sigma == 0:
                 complete[1][selection] = tissue.rho
@@ -480,7 +574,7 @@ class Phantom:
             self.complete = self.make_complete(self.mask, self.voxel_dims)
         return self.complete
 
-    def interpolate_phantom(self, bounds, transform, voxel_size, matrix_size):
+    def interpolate_phantom(self, bounds, transform, voxel_size, matrix_size, rng=None):
         X, Y, Z = np.meshgrid(
             np.linspace(bounds[0][0], bounds[-1][0], matrix_size[0]),
             np.linspace(bounds[0][1], bounds[-1][1], matrix_size[1]),
@@ -501,7 +595,8 @@ class Phantom:
 
         if self.from_mask:
             final_mask = self.mask[nearest].reshape(matrix_size)
-            final = self.make_complete(mask=final_mask, voxel_size=voxel_size)
+            world = global_points.reshape(*final_mask.shape, 3) if self.world_texture else None
+            final = self.make_complete(mask=final_mask, voxel_size=voxel_size, rng=rng, world=world)
         else:
             complete = self.get_complete()
             final_sos = complete[0][nearest].reshape(matrix_size)

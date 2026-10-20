@@ -322,6 +322,7 @@ class Simulation:
     # given a simulation index, return the simulation file
     def __prep_by_index(self, index, dry=False):
         start_time = time.time()
+        rng = self.phantom.simulation_rng(index)
         for transducer_number, transducer in enumerate(
             self.transducer_set.transmit_transducers()
         ):
@@ -346,6 +347,7 @@ class Simulation:
                         self.sim_properties.voxel_size,
                         np.array(self.sim_properties.matrix_size)
                         - 2 * np.array(self.sim_properties.PML_size),
+                        rng=rng,
                     )
                     prepped = self.__prep_simulation(
                         index,
@@ -597,6 +599,7 @@ class Simulation:
             save_path: File path for saving the figure (required if save=True).
             cmap: Matplotlib colormap name. Default is 'viridis'.
         """
+        rng = self.phantom.simulation_rng(index)
         for transducer_number, transducer in enumerate(
             self.transducer_set.transmit_transducers()
         ):
@@ -616,6 +619,7 @@ class Simulation:
                     self.sim_properties.voxel_size,
                     np.array(self.sim_properties.matrix_size)
                     - 2 * np.array(self.sim_properties.PML_size),
+                    rng=rng,
                 )
                 break
             else:
