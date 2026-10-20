@@ -97,6 +97,62 @@ def test_get_complete_materializes_each_tissue_and_caches_result():
     assert second is first
 
 
+def _shell_phantom():
+    """Nested shells covering white-noise, correlated, and constant tissues."""
+    shape = (40, 36, 32)
+    grid = np.stack(np.meshgrid(*[np.arange(n) - n / 2 for n in shape], indexing="ij"))
+    radius = np.sqrt((grid**2).sum(0))
+    phantom = Phantom(matrix_dims=shape, voxel_dims=(1, 1, 1), seed=5)
+    phantom.add_tissue(Tissue(name="white", label=1, c=1590, rho=1080, sigma=20, scale=0.25))
+    phantom.add_tissue(Tissue(name="textured", label=2, c=1560, rho=1050, sigma=15, scale=3))
+    phantom.add_tissue(Tissue(name="fluid", label=3, c=1500, rho=1000, sigma=0))
+    mask = np.zeros(shape, dtype=np.float32)
+    mask[radius < 18] = 1
+    mask[radius < 12] = 2
+    mask[radius < 4] = 3
+    return phantom, mask
+
+
+def _lag_correlation(field, selection, axis=0, lag=1):
+    count = field.shape[axis] - lag
+    a, b = np.take(field, range(count), axis=axis), np.take(field, range(lag, lag + count), axis=axis)
+    both = np.take(selection, range(count), axis=axis) & np.take(selection, range(lag, lag + count), axis=axis)
+    return np.corrcoef(a[both], b[both])[0, 1]
+
+
+def test_make_complete_matches_texture_model():
+    phantom, mask = _shell_phantom()
+
+    complete = phantom.make_complete(mask, (1, 1, 1))
+
+    assert complete.shape == (2, *mask.shape)
+    assert complete.dtype == np.float32
+    white, textured, fluid = (mask == 1), (mask == 2), (mask == 3)
+    # Sub-voxel scatterers: white noise with std sigma * sqrt(scale / voxel).
+    assert complete[0][white].mean() == pytest.approx(1590, abs=0.5)
+    assert complete[0][white].std() == pytest.approx(20 * 0.25**0.5, rel=0.05)
+    assert abs(_lag_correlation(complete[0], white)) < 0.05
+    # Scatterers spanning 3 voxels: linearly upsampled coarse noise, correlated across neighbours.
+    assert complete[0][textured].mean() == pytest.approx(1560, abs=1.5)
+    assert _lag_correlation(complete[0], textured) > 0.7
+    # Constant tissue and the density channel are exact.
+    assert np.all(complete[0][fluid] == 1500) and np.all(complete[1][fluid] == 1000)
+    np.testing.assert_allclose(complete[1][white], complete[0][white] / 1590 * 1080, rtol=1e-6)
+    np.testing.assert_allclose(complete[1][textured], complete[0][textured] / 1560 * 1050, rtol=1e-6)
+
+
+def test_make_complete_is_seeded_and_fills_unknown_labels_with_default():
+    phantom, mask = _shell_phantom()
+    mask[:3] = 9  # no tissue has label 9
+    second, _ = _shell_phantom()
+
+    complete = phantom.make_complete(mask, (1, 1, 1))
+
+    np.testing.assert_array_equal(complete, second.make_complete(mask, (1, 1, 1)))
+    # The default tissue is water (label 0, constant).
+    assert np.all(complete[0][:3] == 1500) and np.all(complete[1][:3] == 1000)
+
+
 def test_phantom_save_load_round_trip(tmp_path):
     phantom = Phantom(
         matrix_dims=(3, 3, 3), voxel_dims=(0.1, 0.2, 0.3), seed=8

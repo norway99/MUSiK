@@ -380,34 +380,15 @@ class Phantom:
                 axis=0,
             )
 
-        scaling_factor = tissue.scale / (
-            (voxel_size[0] + voxel_size[1] + voxel_size[2]) / 3
-        )
-        scaling_factor = np.clip(
-            scaling_factor, 1 / np.mean(shape), np.mean(shape) * 100
-        )
-        size = (
-            int(shape[0] // scaling_factor + 1),
-            int(shape[1] // scaling_factor + 1),
-            int(shape[2] // scaling_factor + 1),
-        )
-
-        # Implement anisotropy later
-
-        # if multiple scatterers in one voxel, modify std of noise: in 3 dimensions, std of iid gaussians scales with ^3/2
-        if np.mean(size) > np.mean(shape):
-            size = shape
-            std_scale = scaling_factor**0.5
-            scaling_factor = 1
-        else:
-            std_scale = 1
+        size, scaling_factor, std_scale = self.__texture_parameters(tissue, shape, voxel_size)
 
         tissue_matrix = np.ones(size, dtype=np.float32) * tissue.c
         tissue_matrix = (
             tissue_matrix + rand_like(tissue_matrix) * tissue.sigma * std_scale
         )
 
-        tissue_matrix = scipy.ndimage.zoom(tissue_matrix, scaling_factor, order=order)
+        if scaling_factor != 1:
+            tissue_matrix = scipy.ndimage.zoom(tissue_matrix, scaling_factor, order=order)
         tissue_matrix = tissue_matrix[
             : shape[0],
             : shape[1],
@@ -415,17 +396,83 @@ class Phantom:
         ]
         return np.stack((tissue_matrix, tissue_matrix / tissue.c * tissue.rho), axis=0)
 
-    def make_complete(
-        self, mask, voxel_size
-    ):  # edit this and generate_tissue, include the matrix size and the voxel size in the argument - very important
-        complete = np.zeros(mask.shape, dtype=np.float16)
-        complete = np.ones(mask.shape, dtype=np.float16) * self.default_tissue
-        for key in self.tissues.keys():
-            complete = np.where(
-                mask == self.tissues[key].label,
-                self.generate_tissue(self.tissues[key], mask.shape, voxel_size),
-                complete,
-            )
+    def __texture_parameters(self, tissue, shape, voxel_size):
+        """Coarse noise grid size, its upsampling factor, and the noise std multiplier.
+
+        Scatterers larger than a voxel are drawn on a coarse grid and linearly upsampled,
+        giving texture correlated over `tissue.scale`. Smaller ones collapse to per-voxel
+        white noise (upsampling factor 1) with a reduced std.
+        """
+        scaling_factor = tissue.scale / np.mean(voxel_size)
+        scaling_factor = float(
+            np.clip(scaling_factor, 1 / np.mean(shape), np.mean(shape) * 100)
+        )
+        size = tuple(int(n // scaling_factor + 1) for n in shape)
+
+        # Implement anisotropy later
+
+        # if multiple scatterers in one voxel, modify std of noise: in 3 dimensions, std of iid gaussians scales with ^3/2
+        if np.mean(size) > np.mean(shape):
+            return tuple(shape), 1, scaling_factor**0.5
+        return size, scaling_factor, 1.0
+
+    def __tissue_values(self, tissue, selection, voxel_size, order=1):
+        """Sound speed for the voxels in `selection`, matching `generate_tissue` statistically.
+
+        Noise is drawn only where the tissue is: per selected voxel for white noise, or,
+        for correlated texture, on the part of `generate_tissue`'s coarse grid that the
+        selection touches, sampled at the same coordinates `zoom` would use.
+        """
+        count = int(np.count_nonzero(selection))
+        if tissue.sigma == 0:
+            return np.full(count, tissue.c, dtype=np.float32)
+
+        size, scaling_factor, std_scale = self.__texture_parameters(
+            tissue, selection.shape, voxel_size
+        )
+        if scaling_factor == 1:
+            noise = self.rng.standard_normal(count, dtype=np.float32)
+            return np.float32(tissue.c) + noise * np.float32(tissue.sigma * std_scale)
+
+        # `zoom` maps output index i to input coordinate i * (n_in - 1) / (n_out - 1).
+        size = np.array(size)
+        zoomed = np.array([int(round(n * scaling_factor)) for n in size])
+        ratio = (size - 1) / np.maximum(zoomed - 1, 1)
+        coords = np.nonzero(selection)
+        positions = [index * r for index, r in zip(coords, ratio)]
+        lo = np.array([int(np.floor(p.min())) for p in positions])
+        hi = np.array([int(np.floor(p.max())) + 2 for p in positions])
+        hi = np.minimum(hi, size)
+        coarse = np.float32(tissue.c) + self.rng.standard_normal(tuple(hi - lo), dtype=np.float32) * np.float32(tissue.sigma)
+        return scipy.ndimage.map_coordinates(
+            coarse, [p - l for p, l in zip(positions, lo)], order=order
+        )
+
+    def make_complete(self, mask, voxel_size):
+        """Sound speed and density maps, shape (2, *mask.shape), for a label mask.
+
+        Each tissue's texture is generated only over the voxels it occupies (see
+        `generate_tissue` for the texture model). Voxels whose label matches no tissue
+        take the default tissue.
+        """
+        complete = np.empty((2, *mask.shape), dtype=np.float32)
+        known = [t.label for t in self.tissues.values()]
+        unmatched = ~np.isin(mask, known)
+        if unmatched.any() and self.default_tissue not in known:
+            raise ValueError("mask contains labels with no tissue and no default tissue to fill them")
+
+        for tissue in self.tissues.values():
+            selection = mask == tissue.label
+            if tissue.label == self.default_tissue:
+                selection |= unmatched
+            if not selection.any():
+                continue
+            values = self.__tissue_values(tissue, selection, voxel_size)
+            complete[0][selection] = values
+            if tissue.sigma == 0:
+                complete[1][selection] = tissue.rho
+            else:
+                complete[1][selection] = values / np.float32(tissue.c) * np.float32(tissue.rho)
         return complete
 
     def get_complete(self):
