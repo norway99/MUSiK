@@ -41,3 +41,5 @@ k-wave-python/
 *.egg-info/
 .coverage
 .coverage.*
+*.tif
+*.tiff

@@ -6,7 +6,7 @@ from os import listdir
 from .utils import utils
 from .utils import geometry
 from .tissue import Tissue
-from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
+from scipy.interpolate import RegularGridInterpolator
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional, Any, Union, List, Callable
 
@@ -447,27 +447,18 @@ class Phantom:
 
         global_indices = global_points / self.voxel_dims.T + self.matrix_dims.T / 2
 
-        # y,x,z = np.arange(self.matrix_dims[0]), np.arange(self.matrix_dims[1]), np.arange(self.matrix_dims[2]) # I'm not sure why this was here but I'm pretty sure it was important - may add it back in later idk
-        x, y, z = (
-            np.arange(self.matrix_dims[0]),
-            np.arange(self.matrix_dims[1]),
-            np.arange(self.matrix_dims[2]),
-        )
-        xyz = np.stack(np.meshgrid(x, y, z, indexing="ij"), axis=-1).reshape(-1, 3)
+        # Nearest-neighbour lookup on the voxel lattice: round each index and clamp to the
+        # grid, which is how a nearest-neighbour interpolator extrapolates past the edges.
+        nearest = np.clip(np.rint(global_indices), 0, self.matrix_dims - 1).astype(np.intp)
+        nearest = tuple(nearest.T)
 
         if self.from_mask:
-            interp = NearestNDInterpolator(xyz, self.mask.flatten())
-            final_mask = interp(list(global_indices)).reshape(matrix_size)
+            final_mask = self.mask[nearest].reshape(matrix_size)
             final = self.make_complete(mask=final_mask, voxel_size=voxel_size)
         else:
-            interp_sos = NearestNDInterpolator(xyz, self.get_complete()[0].flatten())
-            interp_density = NearestNDInterpolator(
-                xyz, self.get_complete()[1].flatten()
-            )
-            # interp_sos = NearestNDInterpolator((x,y,z), self.get_complete()[0])
-            # interp_density = NearestNDInterpolator((x,y,z), self.get_complete()[1])
-            final_sos = interp_sos(global_indices).reshape(matrix_size)
-            final_density = interp_density(global_indices).reshape(matrix_size)
+            complete = self.get_complete()
+            final_sos = complete[0][nearest].reshape(matrix_size)
+            final_density = complete[1][nearest].reshape(matrix_size)
             final = np.stack((final_sos, final_density), axis=0)
 
         return final
