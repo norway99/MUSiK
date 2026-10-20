@@ -1,0 +1,112 @@
+# Cardiac 4D sweep configuration. Every value marked TODO is an open decision (see plan.md).
+# Lengths are in mm unless the key says otherwise. The world frame is the cropped phantom
+# grid, centered on its middle voxel (MUSiK's convention), with axes in the mask's array
+# order. For the bavcta021 TIFF that is (Z, Y, X) = (inferior, posterior, patient-left),
+# which is right-handed; don't transpose it.
+
+paths:
+  mask: /home/trevor/repos/MUSiK/assets/cardiac_4d_phantom/img4d_CT_bavcta021_baseline_seg4d.tif
+  output_root: /data/trevor/usgr/simulations_raw/cardiac_4d_sweep
+
+mask:
+  spacing_mm: [0.4, 0.39589062, 0.39589062]     # (Z, Y, X), from the embedded NIfTI header
+  # mask value -> tissue name. Values not listed fall back to `default_tissue`.
+  # Frame 0 is about end-diastole, frames 7-8 about end-systole.
+  labels:
+    1: myocardium    # LV myocardium
+    2: blood         # LA blood pool
+    3: blood         # LV blood pool
+    4: blood         # RA blood pool
+    5: blood         # RV blood pool
+    6: blood         # aorta (root, arch, descending); no vessel wall labelled
+    7: blood         # pulmonary artery; no vessel wall labelled
+    8: myocardium    # RV myocardium
+    9: myocardium    # LA wall (TODO: same tissue as ventricular myocardium?)
+    10: myocardium   # RA wall
+  heart_labels: [1, 2, 3, 4, 5, 8, 9, 10]       # chambers and walls; excludes the great vessels
+
+tissues:                                        # TODO: tune; c [m/s], rho [kg/m^3], sigma [m/s], scale [m]
+  blood:      {c: 1578, rho: 1060, sigma: 1.3, scale: 0.00001}
+  myocardium: {c: 1592, rho: 1081, sigma: 20,  scale: 0.0001}
+  soft:       {c: 1540, rho: 1040, sigma: 10,  scale: 0.0001}
+default_tissue: soft                            # everything unlabelled: the mask has no chest wall or lungs
+
+phantom:
+  voxel_size_mm: 0.5                            # TODO: phantom resampling resolution
+  # Background kept around the labelled region on every side. It must enclose every probe
+  # position, so it follows the sweep design. Size grows quickly: see plan.md.
+  margin_mm: 50                                 # TODO
+  seed: 1
+  # Bake the speckle field once per cardiac frame so every scan line samples the same
+  # world-space scatterers. Otherwise MUSiK draws fresh speckle for every simulation.
+  bake_speckle: true
+
+cardiac:
+  num_frames: 20
+  heart_rate_bpm: 60                            # TODO: fixed, or varying over the sweep?
+  phase_offset: 0.0                             # cardiac phase in [0, 1) at t = 0
+
+acquisition:
+  frame_rate_hz: 20                             # TODO: together with sweep durations this sets image count
+  image_size: [512, 512]
+  fov_degrees: 75                               # TODO: 32 lines over 75 deg is ~2.4 deg per line
+  depth_mm: 160
+
+transducer:
+  max_frequency: 1.0e+6                         # TODO: main cost knob (voxel size scales with 1/f)
+  elements: 64
+  width_mm: 20
+  height_mm: 12
+  focus_azimuth_mm: 80
+  focus_elevation_mm: 80
+  cycles: 2
+  ray_num: 32
+  sensor_sampling_scheme: not_centroid
+
+simulation:
+  # The grid only needs to enclose one steered beam: MUSiK rotates it per scan line.
+  # Voxel size follows from `transducer.max_frequency` (MUSiK uses a quarter wavelength).
+  grid_size_mm: [170, 25, 15]                   # TODO: depth x lateral x elevation
+  PML_size: [16, 8, 8]
+  PML_alpha: 2
+  alpha_coeff: 0.5
+  alpha_power: 1.5
+  bona: 6
+  workers: 3
+  nodes: 1
+
+# Each segment is one contiguous sweep. Keyframe times are seconds from the segment start;
+# poses are splined between keyframes. Positions and targets are mm relative to the heart
+# center. The probe's beam axis points from `position` to `target`. `lateral` (per segment
+# or keyframe) is the world direction the image's lateral axis should roughly follow, and
+# `roll_deg` then spins the image about the beam. Motion along the plane normal (beam x
+# lateral) sweeps through the volume; motion along `lateral` only slides the image sideways.
+# Rotation splines take the short way, so keep keyframe rolls < 180 deg apart.
+# Segments are separated by `gap_s` (the probe is lifted and repositioned).
+trajectory:                                     # TODO: placeholders until we look at the mask's orientation
+  segments:
+    - name: translate                           # parallel planes stepping along Y
+      gap_s: 0.0
+      lateral: [1, 0, 0]
+      keyframes:
+        - {t: 0.0,  position: [0, -40, 110], target: [0, -40, 0], roll_deg: 0}
+        - {t: 15.0, position: [0, 40, 110],  target: [0, 40, 0],  roll_deg: 0}
+    - name: fan                                 # fixed contact point, tilting through the volume along X
+      gap_s: 1.0
+      lateral: [0, 1, 0]
+      keyframes:
+        - {t: 0.0,  position: [0, 0, 110], target: [-50, 0, 0], roll_deg: 0}
+        - {t: 15.0, position: [0, 0, 110], target: [50, 0, 0],  roll_deg: 0}
+    - name: rotate                              # fixed oblique view, spinning about the beam
+      gap_s: 1.0
+      lateral: [1, 0, 0]
+      keyframes:
+        - {t: 0.0,  position: [0, 60, 90], target: [0, 0, 0], roll_deg: 0}
+        - {t: 10.0, position: [0, 60, 90], target: [0, 0, 0], roll_deg: 90}
+        - {t: 20.0, position: [0, 60, 90], target: [0, 0, 0], roll_deg: 180}
+
+reconstruction:
+  tgc: 1.0                                      # attenuation_factor passed to MUSiK's gain compensation
+  num_depth_samples: 1024                       # polar resampling before scan conversion
+  dynamic_range_db: 50                          # TODO
+  reference_percentile: 99.5                    # one global log-compression reference for the whole sweep
