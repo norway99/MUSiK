@@ -7,6 +7,7 @@ from queue import Empty
 import time
 import tqdm
 from dataclasses import dataclass, field
+from typing import List, Optional, Union
 
 from .utils import utils
 from .phantom import Phantom
@@ -98,9 +99,40 @@ class Experiment:
         results: Results instance for accessing saved simulation outputs.
         indices: List of simulation indices to run.
         gpu: Whether to use GPU acceleration (default True).
-        workers: Number of parallel worker processes (default 2).
+        num_threads: Host threads for each k-Wave binary (default 4).
+        prep_workers: Number of CPU processes preparing simulations (default 1).
+        sim_workers: Number of simulations run concurrently on each GPU (default 1).
+        gpus: GPUs to run on: an int n (the first n visible devices), a list of
+            indices into the visible devices, or None to use the current device.
+        workers: Deprecated alias for prep_workers.
         additional_keys: Additional k-Wave outputs to record (e.g., ['p_max']).
         repeat: Batch job mode flag (-1 for static index assignment).
+
+    Choosing worker counts:
+        Running splits into CPU-bound preparation (building the medium and k-Wave
+        objects) and GPU-bound simulation (running k-Wave). The log reports both for
+        every simulation ("preparation ... completed in", "simulation ... completed
+        in"), which is enough to size them:
+
+        - sim_workers (per GPU): each simulation launches the k-Wave binary afresh, and
+          the GPU sits idle while input is written, the binary starts up, and output is
+          read back. Extra simulation workers fill that idle time. Use 2-4 when
+          simulations are small and numerous (seconds each, a small fraction of GPU
+          memory); gains flatten once the GPU is continuously busy. For compute-heavy
+          simulations on large grids the GPU is already busy, so keep 1. Each worker
+          holds its own simulation on the GPU, so sim_workers x peak device memory per
+          simulation (reported in k-Wave's log) must fit on the device.
+        - prep_workers: preparation must keep up with every simulation worker. With
+          preparation time t_prep and simulation time t_sim, use at least
+          sim_workers x number of GPUs x t_prep / t_sim, rounded up. Each prepared
+          simulation waits in host memory with its full medium, and up to
+          max(prep_workers, sim_workers x number of GPUs) can be waiting at once.
+        - num_threads: each k-Wave binary otherwise starts one host thread per CPU core,
+          so several concurrent simulations oversubscribe the CPU.
+        - Keep prep_workers + sim_workers x number of GPUs within the CPU cores available.
+        - Extra GPUs don't scale linearly for small simulations: host-side work per
+          simulation (memory allocation, transfers, kernel launches through the driver)
+          slows as more simulations run at once.
 
     Example:
         >>> exp = Experiment(
@@ -111,7 +143,7 @@ class Experiment:
         ...     sensor=sensor,
         ... )
         >>> exp.save()
-        >>> exp.run(workers=4)  # Run with 4 parallel workers
+        >>> exp.run(prep_workers=1, sim_workers=3, gpus=2)  # 3 simulations per GPU on 2 GPUs
 
         >>> # Later, load and access results
         >>> exp = Experiment.load('./my_experiment')
@@ -126,7 +158,11 @@ class Experiment:
     results: Results = None
     indices: list = None
     gpu: bool = True
-    workers: int = 2
+    num_threads: int = 4
+    prep_workers: int = 1
+    sim_workers: int = 1
+    gpus: Union[int, List[int], None] = None
+    workers: Optional[int] = None
     additional_keys: list = field(default_factory=list)
     repeat: int = None
 
@@ -134,16 +170,18 @@ class Experiment:
         if self.simulation_path is None:
             self.simulation_path = os.path.join(os.getcwd(), "experiment")
             os.makedirs(self.simulation_path, exist_ok=True)
-        if self.workers is not None and self.workers > 3:
+        if self.workers is not None:
+            self.prep_workers, self.workers = self.workers, None
+        if self.prep_workers is not None and self.prep_workers > 4:
             print(
-                "workers is the number of simulations being prepared simultaneously on a single gpu node. Having many workers is RAM intensive and may not decrease overall runtime"
+                "prep_workers is the number of simulations being prepared simultaneously. Having many is RAM intensive and only helps if preparation can't keep up with the simulation workers"
             )
         slurm_cpus = os.getenv("SLURM_CPUS_PER_TASK")
         if slurm_cpus is not None:
             print(f"Slurm environment detected. Found {slurm_cpus} cpus available")
             num_cpus = int(slurm_cpus)
-            if num_cpus < self.workers:
-                self.workers = num_cpus
+            if self.prep_workers is not None and num_cpus < self.prep_workers:
+                self.prep_workers = num_cpus
             self.repeat = -1
             print(f"Setting repeat to -1 to avoid asynchronous index allocation")
         os.makedirs(os.path.join(self.simulation_path, f"results"), exist_ok=True)
@@ -181,7 +219,10 @@ class Experiment:
             "indices": self.indices,
             "nodes": self.nodes,
             "gpu": self.gpu,
-            "workers": self.workers,
+            "num_threads": self.num_threads,
+            "prep_workers": self.prep_workers,
+            "sim_workers": self.sim_workers,
+            "gpus": self.gpus,
             "additional_keys": self.additional_keys,
         }
         utils.dict_to_json(dictionary, os.path.join(filepath, f"experiment.json"))
@@ -219,7 +260,11 @@ class Experiment:
         experiment_dict = utils.json_to_dict(os.path.join(filepath, f"experiment.json"))
         experiment.nodes = experiment_dict["nodes"]
         experiment.gpu = experiment_dict["gpu"]
-        experiment.workers = experiment_dict["workers"]
+        experiment.num_threads = experiment_dict.get("num_threads", 4)
+        # Older experiments saved "workers", which now means prep_workers.
+        experiment.prep_workers = experiment_dict.get("prep_workers", experiment_dict.get("workers", 1))
+        experiment.sim_workers = experiment_dict.get("sim_workers", experiment_dict.get("lanes", 1))
+        experiment.gpus = experiment_dict.get("gpus")
         experiment.additional_keys = experiment_dict["additional_keys"]
         experiment.add_results()
         if experiment_dict["indices"] is None:
@@ -268,27 +313,46 @@ class Experiment:
             return None
         return np.array_split(np.array(indices), self.nodes)
 
-    def run(self, node=None, dry=False, repeat=False, workers=None, dry_fast=False):
+    def run(
+        self,
+        node=None,
+        dry=False,
+        repeat=False,
+        prep_workers=None,
+        dry_fast=False,
+        sim_workers=None,
+        gpus=None,
+        workers=None,
+    ):
         """Execute simulations for all pending indices.
 
-        Runs acoustic simulations using a producer-consumer pattern where
-        preparation workers build k-Wave objects and a run worker executes
-        the GPU simulations.
+        Runs acoustic simulations using a producer-consumer pattern: preparation
+        workers (CPU) build k-Wave objects into a queue, and simulation workers
+        (GPU) run them, `sim_workers` per GPU. See the class docstring for sizing.
 
         Args:
             node: Compute node index for distributed execution. If None,
                 runs all nodes sequentially.
-            dry: If True, perform a dry run without actual simulation. Use 
+            dry: If True, perform a dry run without actual simulation. Use
                 for initializing sensor components for reconstruction. after
                 loading complete results.
             repeat: If True, re-run simulations even if results exist.
-            workers: Number of parallel preparation workers. If None,
-                uses self.workers.
+            prep_workers: Number of preparation processes. If None, uses
+                self.prep_workers; if that is None too, runs serially in-process.
             dry_fast: If True and dry=True, only dry-run one ray per
                 transducer (assumes identical transducers!).
+            sim_workers: Simulations run concurrently on each GPU. If None,
+                uses self.sim_workers.
+            gpus: GPUs to run on (int count, list of visible-device indices, or
+                None for the current device). If None, uses self.gpus.
+            workers: Deprecated alias for prep_workers.
         """
-        if workers is None:
-            workers = self.workers
+        if prep_workers is None:
+            prep_workers = workers if workers is not None else self.prep_workers
+        if sim_workers is None:
+            sim_workers = self.sim_workers
+        if gpus is None:
+            gpus = self.gpus
         assert os.path.exists(self.simulation_path), (
             "Attempting to run simulations but an experiment directory does not exist. Please save the experiment (my_experiment.save()) before running simulations."
         )
@@ -298,16 +362,15 @@ class Experiment:
         else:
             indices = self.indices_to_run(repeat=repeat)
 
+        options = dict(dry=dry, repeat=repeat, prep_workers=prep_workers, dry_fast=dry_fast, sim_workers=sim_workers, gpus=gpus)
         if node is None:
             if self.nodes is None:
                 self.nodes = 1
             if dry:
-                self.run(0, dry=dry, repeat=repeat, workers=workers, dry_fast=dry_fast)
+                self.run(0, **options)
             else:
                 for node in range(self.nodes):
-                    self.run(
-                        node, dry=dry, repeat=repeat, workers=workers, dry_fast=dry_fast
-                    )
+                    self.run(node, **options)
         else:
             if dry:
                 print("dry run of simulation")
@@ -333,7 +396,7 @@ class Experiment:
                         transducer.not_transducer = global_not_transducer
                         transducer.pulse = global_pulse
             else:
-                if workers is None:
+                if prep_workers is None:
                     for index in indices:
                         self.simulate(index)
                 else:
@@ -341,53 +404,87 @@ class Experiment:
                     if subdivisions is None:
                         print("Found no more simulations to run.")
                     else:
-                        print("running with {} workers\n".format(workers))
-                        queue = multiprocessing.Queue()
-
-                        if workers > 2:
-                            simulations = np.array_split(
-                                subdivisions[node], workers - 1
-                            )
-                            prep_procs = []
-                            for i in range(workers - 1):
-                                prep_procs.append(
-                                    multiprocessing.Process(
-                                        name=f"prep_{i}",
-                                        target=self.prep_worker,
-                                        args=(
-                                            queue,
-                                            simulations[i],
-                                            dry,
-                                            workers - 1,
-                                            repeat,
-                                        ),
-                                    )
-                                )
-                                prep_procs[i].start()
-                                time.sleep(10)
-                        else:
-                            prep_procs = [
-                                multiprocessing.Process(
-                                    name="prep",
-                                    target=self.prep_worker,
-                                    args=(queue, subdivisions[node], dry),
-                                ),
-                            ]
-                            prep_procs[0].start()
-
-                        run_proc = multiprocessing.Process(
-                            name="run",
-                            target=self.run_worker,
-                            args=(queue, subdivisions[node], len(prep_procs)),
-                        )
-                        run_proc.start()
-
-                        for prep_proc in prep_procs:
-                            prep_proc.join()
-                        run_proc.join()
+                        devices = self.__simulation_devices(gpus)
                         print(
-                            f"successfully joined {len(prep_procs)} preparation processes and 1 run process"
+                            f"running with {prep_workers} preparation worker(s) and {sim_workers} simulation worker(s) "
+                            f"on each of {len(devices)} device(s): {devices}\n"
                         )
+                        self.__run_pipeline(subdivisions[node], prep_workers, sim_workers, devices, repeat)
+
+    def __simulation_devices(self, gpus):
+        """CUDA device ids for the simulation workers, as values for CUDA_VISIBLE_DEVICES.
+
+        `gpus` indexes into the devices this process can see, so it composes with a
+        scheduler that has already restricted CUDA_VISIBLE_DEVICES (e.g. Slurm).
+        [None] means: leave device selection alone.
+        """
+        if gpus is None or not self.gpu:
+            return [None]
+        requested = list(range(gpus)) if isinstance(gpus, int) else [int(g) for g in gpus]
+        visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+        names = visible.split(",") if visible else [str(i) for i in range(max(requested) + 1)]
+        if max(requested) >= len(names):
+            raise ValueError(f"requested GPUs {requested} but only {len(names)} are visible ({visible})")
+        return [names[i].strip() for i in requested]
+
+    def __run_pipeline(self, indices, prep_workers, sim_workers, devices, repeat):
+        """Preparation workers fill a queue of prepared simulations; simulation workers drain it."""
+        if prep_workers < 1 or sim_workers < 1:
+            raise ValueError("prep_workers and sim_workers must be at least 1")
+        queue = multiprocessing.Queue()
+        num_sim = sim_workers * len(devices)
+        # Keep one prepared simulation waiting per simulation worker (or per prep worker, if more).
+        queue_depth = max(prep_workers, num_sim)
+        prep_procs = []
+        for i, chunk in enumerate(np.array_split(np.asarray(indices), prep_workers)):
+            prep_procs.append(
+                multiprocessing.Process(
+                    name=f"prep_{i}",
+                    target=self.prep_worker,
+                    args=(queue, chunk, False, queue_depth, repeat),
+                )
+            )
+            prep_procs[-1].start()
+        sim_procs = [
+            multiprocessing.Process(name=f"sim_{device}_{i}", target=self.sim_worker, args=(queue, device))
+            for device in devices
+            for i in range(sim_workers)
+        ]
+        for proc in sim_procs:
+            proc.start()
+
+        # If every simulation worker dies, nothing drains the queue and the prep workers would wait forever.
+        while any(proc.is_alive() for proc in prep_procs):
+            if not any(proc.is_alive() for proc in sim_procs):
+                for proc in prep_procs:
+                    proc.terminate()
+                break
+            time.sleep(1)
+        for proc in prep_procs:
+            proc.join()
+        # Stop markers land behind every queued simulation, one per live simulation worker.
+        for proc in sim_procs:
+            if proc.is_alive():
+                queue.put(SENTINEL)
+        for proc in sim_procs:
+            proc.join()
+        if any(proc.exitcode != 0 for proc in sim_procs):
+            # Prepared simulations may be left in the queue with no one to read them; don't
+            # let the queue block this process's exit waiting for them to drain.
+            queue.cancel_join_thread()
+
+        missing = [
+            int(index)
+            for index in indices
+            if not glob.glob(os.path.join(self.simulation_path, "results", f"signal_{int(index):06d}.np?"))
+        ]
+        if missing:
+            failed = [proc.name for proc in sim_procs if proc.exitcode != 0]
+            raise RuntimeError(
+                f"{len(missing)} of {len(indices)} simulations have no results "
+                f"(failed simulation workers: {failed or 'none'}); first missing: {missing[:10]}"
+            )
+        print(f"successfully joined {len(prep_procs)} preparation and {len(sim_procs)} simulation process(es)")
 
     def prep_worker(self, queue, indices, dry=False, num_prep_workers=1, repeat=False):
         start = time.time()
@@ -426,6 +523,7 @@ class Experiment:
                 simulation_path=self.simulation_path,
                 index=index,
                 gpu=self.gpu,
+                num_threads=self.num_threads,
                 dry=dry,
                 additional_keys=self.additional_keys,
             )
@@ -436,36 +534,23 @@ class Experiment:
             start = time.time()
             if count == len(indices):
                 break
-        queue.put(SENTINEL)
 
-    def run_worker(self, queue, indices, num_prep_workers):
-        start = time.time()
-        seen_sentinel_count = 0
-        count = 0
+    def sim_worker(self, queue, device=None):
+        """Run prepared simulations from the queue until a stop marker arrives.
+
+        `device` pins this worker (and the k-Wave binaries it launches) to one GPU.
+        """
+        if device is not None:
+            os.environ["CUDA_VISIBLE_DEVICES"] = device
         while True:
             try:
-                simulation = queue.get(False)
+                simulation = queue.get(timeout=300)
             except Empty:
-                time.sleep(1)
-                if time.time() - start > 300:
-                    print(
-                        f"run worker has waited {(time.time() - start) // 60} minutes for a prepared simulation"
-                    )
-                    start = time.time()
+                print("simulation worker has waited 5 minutes for a prepared simulation")
                 continue
-            if simulation == SENTINEL:
-                seen_sentinel_count += 1
-            else:
-                simulation.run()
-                count += 1
-                start = time.time()
-            if seen_sentinel_count == num_prep_workers:
-                if count == len(indices):
-                    break
-                else:
-                    assert False, (
-                        f"counting all {seen_sentinel_count} prep_workers finished but only {count}/{len(indices)} indices matched"
-                    )
+            if isinstance(simulation, str) and simulation == SENTINEL:
+                break
+            simulation.run()
 
     def simulate(self, index, dry=False):
         simulation = Simulation(
@@ -476,6 +561,7 @@ class Experiment:
             simulation_path=self.simulation_path,
             index=index,
             gpu=self.gpu,
+            num_threads=self.num_threads,
             dry=dry,
             additional_keys=self.additional_keys,
         )
