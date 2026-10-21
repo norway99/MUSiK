@@ -488,6 +488,9 @@ class Simulation:
             # set the input settings
             input_filename = f"input_{str(self.index).zfill(6)}.h5"
             input_file_full_path = os.path.join(temp_directory, input_filename)
+            # k-Wave's default output name is a timestamp in the shared temp dir, so
+            # concurrent runs (e.g. one per GPU) starting in the same second would collide.
+            output_file_full_path = os.path.join(temp_directory, f"output_{str(self.index).zfill(6)}.h5")
 
             simulation_options = kwave.options.simulation_options.SimulationOptions(
                 pml_inside=False,
@@ -497,6 +500,7 @@ class Simulation:
                 data_recast=True,
                 save_to_disk=True,  # This is broken in the current version of k-Wave, so we save to disk and manually delete to free memory
                 input_filename=input_file_full_path,
+                output_filename=output_file_full_path,
                 save_to_disk_exit=False,
             )
 
