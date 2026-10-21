@@ -44,6 +44,20 @@ def test_largest_prime_factor(value, expected):
     assert SimProperties().largest_prime_factor(value) == expected
 
 
+@pytest.mark.parametrize("value, expected", [(363, 378), (75, 80), (51, 54), (64, 64), (1, 2)])
+def test_fft_friendly_size_is_smallest_even_7_smooth(value, expected):
+    assert SimProperties().fft_friendly_size(value) == expected
+
+
+def test_calc_matrix_size_pads_only_to_next_fft_friendly_size():
+    props = SimProperties()
+
+    # 170 mm at 0.5133 mm is 331.2 voxels; plus 2 x 16 PML is 363.2.
+    size = props.calc_matrix_size((0.170, 0.030, 0.018), (0.0005133,) * 3, (16, 8, 8))
+
+    assert size.tolist() == [378, 80, 54]
+
+
 def test_calc_matrix_size_does_not_mutate_inputs():
     props = SimProperties()
     grid_size = np.array([0.01, 0.002, 0.002])
