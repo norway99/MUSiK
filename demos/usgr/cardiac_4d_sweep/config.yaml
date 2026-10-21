@@ -24,6 +24,11 @@ mask:
     9: myocardium    # LA wall (TODO: same tissue as ventricular myocardium?)
     10: myocardium   # RA wall
   heart_labels: [1, 2, 3, 4, 5, 8, 9, 10]       # chambers and walls; excludes the great vessels
+  chambers:                                     # coverage groups for trajectory QA
+    LV: [1, 3]
+    RV: [5, 8]
+    LA: [2, 9]
+    RA: [4, 10]
 
 tissues:                                        # TODO: tune; c [m/s], rho [kg/m^3], sigma [m/s], scale [m]
   blood:      {c: 1578, rho: 1060, sigma: 1.3, scale: 0.00001}
@@ -44,11 +49,11 @@ phantom:
 
 cardiac:
   num_frames: 20
-  heart_rate_bpm: 60                            # TODO: fixed, or varying over the sweep?
+  heart_rate_bpm: 71                            # not commensurate with the frame rate, so every CT frame gets sampled
   phase_offset: 0.0                             # cardiac phase in [0, 1) at t = 0
 
 acquisition:
-  frame_rate_hz: 20                             # TODO: together with sweep durations this sets image count
+  frame_rate_hz: 10                             # with trajectory.duration_s, sets the image count
   image_size: [512, 512]
   fov_degrees: 90                               # 48 lines over 90 deg is ~1.9 deg per line
   depth_mm: 160
@@ -77,35 +82,49 @@ simulation:
   workers: 1
   nodes: 1
 
-# Each segment is one contiguous sweep. Keyframe times are seconds from the segment start;
-# poses are splined between keyframes. Positions and targets are mm relative to the heart
-# center. The probe's beam axis points from `position` to `target`. `lateral` (per segment
-# or keyframe) is the world direction the image's lateral axis should roughly follow, and
-# `roll_deg` then spins the image about the beam. Motion along the plane normal (beam x
-# lateral) sweeps through the volume; motion along `lateral` only slides the image sideways.
-# Rotation splines take the short way, so keep keyframe rolls < 180 deg apart.
-# Segments are separated by `gap_s` (the probe is lifted and repositioned).
-trajectory:                                     # TODO: placeholders until we look at the mask's orientation
-  segments:
-    - name: translate                           # parallel planes stepping along Y
-      gap_s: 0.0
-      lateral: [1, 0, 0]
+# One continuous trajectory through the keyframes of every section, in order. Positions
+# and targets are mm relative to the heart center. The beam points from `position` to
+# `target`; `lateral` (per section or keyframe) is the world direction the image's lateral
+# axis roughly follows, and `roll_deg` then spins the image about the beam. A keyframe
+# without a target is a position-only waypoint whose orientation is interpolated. Keyframes
+# have no times: intervals are timed by the speed limits, then scaled to `duration_s`.
+# Rotation splines take the short way, so keep consecutive keyframes < 180 deg apart.
+#
+# Landmarks (mm from heart center, Z inferior / Y posterior / X patient-left): LV blood
+# [0, 10, 23], apex [10, -27, 55], base [-8, 43, -5], RV [6, -25, -4]. LV axis base->apex
+# [0.19, -0.74, 0.64]; chambers span -76 (top of LA) to +53 mm along it from LV center.
+trajectory:
+  duration_s: 100                               # 1000 images at 10 Hz
+  max_rotation_dps: 15
+  max_translation_mmps: 25
+  link_speed_fraction: 0.9                      # links peak at this fraction of the limits; sweeps get the rest of the time
+  sections:
+    - name: parasternal_short_axis              # short-axis fan from above the atria to below the apex
+      lateral: [0.19, -0.74, 0.64]              # LV axis; roll 90 turns the image to short axis
       keyframes:
-        - {t: 0.0,  position: [0, -40, 90], target: [0, -40, 0], roll_deg: 0}
-        - {t: 15.0, position: [0, 40, 90],  target: [0, 40, 0],  roll_deg: 0}
-    - name: fan                                 # fixed contact point, tilting through the volume along X
-      gap_s: 1.0
-      lateral: [0, 1, 0]
+        - {position: [-10, -85, 10], target: [-16, 74, -32], roll_deg: 90}   # LV center - 86 mm along axis
+        - {position: [-10, -85, 10], target: [0, 10, 23],    roll_deg: 90}   # LV center
+        - {position: [-10, -85, 10], target: [10, -28, 56],  roll_deg: 90}   # LV center + 52 mm (last plane that sees the heart)
+    - name: to_apical
+      link: true
       keyframes:
-        - {t: 0.0,  position: [0, 0, 90], target: [-50, 0, 0], roll_deg: 0}
-        - {t: 15.0, position: [0, 0, 90], target: [50, 0, 0],  roll_deg: 0}
-    - name: rotate                              # fixed oblique view, spinning about the beam
-      gap_s: 1.0
-      lateral: [1, 0, 0]
+        - {position: [3, -76, 47]}                                           # pushed outward from the straight path
+    - name: apical_rotation                     # 4-chamber -> 2-chamber -> mirrored 4-chamber
+      lateral: [-6, 35, 27]                     # RV -> LV direction (4-chamber view at roll 0)
       keyframes:
-        - {t: 0.0,  position: [0, 49, 73], target: [0, 0, 0], roll_deg: 0}
-        - {t: 10.0, position: [0, 49, 73], target: [0, 0, 0], roll_deg: 90}
-        - {t: 20.0, position: [0, 49, 73], target: [0, 0, 0], roll_deg: 180}
+        - {position: [16, -49, 74], target: [-4, 25, 10], roll_deg: 0}
+        - {position: [16, -49, 74], target: [-4, 25, 10], roll_deg: 90}
+        - {position: [16, -49, 74], target: [-4, 25, 10], roll_deg: 180}
+    - name: to_subcostal
+      link: true
+      keyframes:
+        - {position: [51, -59, 44]}                                          # keeps clear of the inferior wall
+    - name: subcostal_fan                       # front -> back through the heart
+      lateral: [0, 0, 1]                        # patient left-right; roll 360 (= 0) continues the apical roll instead of unwinding it
+      keyframes:
+        - {position: [70, -50, 0], target: [-38, -53, 0], roll_deg: 360}     # center - 66 mm along the fan direction
+        - {position: [70, -50, 0], target: [0, 0, 0],     roll_deg: 360}
+        - {position: [70, -50, 0], target: [26, 36, 0],   roll_deg: 360}     # center + 44 mm
 
 reconstruction:
   tgc: 1.0                                      # attenuation_factor passed to MUSiK's gain compensation

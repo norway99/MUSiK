@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import PchipInterpolator
 from scipy.ndimage import center_of_mass, map_coordinates
 from scipy.spatial.transform import Rotation, RotationSpline
 
@@ -163,12 +163,15 @@ def look_at_rotation(
 
 
 def interpolate_poses(knot_times: np.ndarray, knot_poses: np.ndarray, times: np.ndarray) -> np.ndarray:
-    """Cubic spline in position and rotation spline in orientation, onto `times`."""
+    """Monotone cubic (PCHIP) in position and rotation spline in orientation, onto `times`.
+
+    PCHIP doesn't overshoot, so a probe held still between keyframes stays still.
+    """
     poses = np.tile(np.eye(4), (len(times), 1, 1))
     if len(knot_times) < 2:
         poses[:] = knot_poses[0]
         return poses
-    poses[:, :3, 3] = CubicSpline(knot_times, knot_poses[:, :3, 3], axis=0, bc_type="natural")(times)
+    poses[:, :3, 3] = PchipInterpolator(knot_times, knot_poses[:, :3, 3], axis=0)(times)
     rotations = RotationSpline(knot_times, Rotation.from_matrix(knot_poses[:, :3, :3]))
     poses[:, :3, :3] = rotations(times).as_matrix()
     return poses

@@ -116,7 +116,7 @@ def write_metadata(paths: Paths, config: dict, sector, trajectory: dict, valid: 
             "true_poses": [pose_matrix_to_12(p) for p in trajectory["poses"]],
             "cardiac_phase": trajectory["cardiac_phase"].tolist(),
             "cardiac_frame": trajectory["cardiac_frame"].tolist(),
-            "segment": trajectory["segment"].tolist(),
+            "section": trajectory["section"].tolist(),
             **extra,
         },
     }
