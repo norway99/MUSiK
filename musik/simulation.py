@@ -187,19 +187,22 @@ class SimProperties:
             PML_size
         )
 
+        # Pad each dimension to the next FFT-friendly size
         for dim in range(3):
-            lpfs = []
-            for i in range(int(raw_matrix_size[dim]), int(raw_matrix_size[dim] * 1.5)):
-                lpf = self.largest_prime_factor(i)
-                if i % 2:
-                    lpfs.append(
-                        lpf * 2
-                    )  # Does very poorly with simulations with an odd number of voxels
-                else:
-                    lpfs.append(lpf)
-            matrix_size.append(int(raw_matrix_size[dim]) + np.argmin(lpfs))
+            matrix_size.append(self.fft_friendly_size(int(np.ceil(raw_matrix_size[dim]))))
         matrix_size = np.array(matrix_size)
         return matrix_size
+
+    def fft_friendly_size(self, n, max_prime=7):
+        """Smallest even integer >= n whose prime factors are all <= max_prime.
+
+        Odd sizes do very poorly in k-Wave, and FFTs are efficient for sizes built from
+        small primes.
+        """
+        size = n + n % 2
+        while self.largest_prime_factor(size) > max_prime:
+            size += 2
+        return size
 
     def calc_bounding_vertices(self, matrix_size, PML_size, voxel_dims):
         new_grid_size = (np.array(matrix_size) - 2 * np.array(PML_size)) * np.array(
