@@ -32,6 +32,7 @@ def make_transducer(config: dict, c0: float) -> transducer.Focused:
         focus_azimuth=t["focus_azimuth_mm"] * 1e-3,
         focus_elevation=t["focus_elevation_mm"] * 1e-3,
         cycles=t["cycles"],
+        receive_apodization=t["receive_apodization"],
     )
     probe.make_sensor_coords(c0)
     return probe

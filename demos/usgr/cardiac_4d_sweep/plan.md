@@ -64,6 +64,11 @@
 - No added anatomy (vessel walls, body wall) for now; revisit after the first sample images.
 - Storage is fine to allocate. Without baking, each frame is just a label mask (~1 MB compressed on disk).
 
+- Pilot tuning (image 451, phase 11): 90° FOV, 48 lines, 0.75 MHz, probe 2 cm closer, soft-tissue sigma 3. Myocardium now stands out clearly from the background.
+- Chamber haze (blood ≈ −13.5 dB vs myocardium) is accepted as clutter. It's unchanged by Hanning receive, elevation focus 100 mm, and side PML 16. The simulation's own floor (homogeneous medium) is −43 dB, and slice thickness is ruled out (≤3% of cavity pixels have wall within ±5 mm out of plane). Likely reverberation and pulse tail behind the bright anterior wall.
+- PML stays at [16, 8, 8] (default). A 32-voxel depth PML lowers a far-boundary artifact at about half the recorded depth (~90 mm here) from −21 to −31 dB re wall, but we accept it as-is. `PML_alpha` has no effect on it. Thicker side PML (16) showed no benefit.
+- Package fixes from the pilots: `SimProperties.PML_alpha` is now passed to k-Wave (it was ignored); a single ray points straight ahead for any sweep; `Focused.make_scan_line` applies receive apodization to every element, shifts by exactly the delay (was off by one), and handles negative delays; grid sizes pad only to the next 7-smooth even size.
+
 ## Next steps
 1. Simulate one line (or one image) to confirm the k-Wave run and reconstruction path. Needs GPU time; both local GPUs are currently in use.
 2. Settle tissue values from the first sample images.
