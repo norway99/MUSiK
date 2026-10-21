@@ -249,6 +249,9 @@ class Simulation:
         simulation_path: Directory path for saving simulation results.
         index: Simulation index (ray number) to execute.
         gpu: Whether to use GPU acceleration (default True).
+        num_threads: Host threads for the k-Wave binary (default 4). k-Wave's own
+            default is every CPU core, which oversubscribes the CPU when several
+            simulations run at once.
         dry: If True, skip actual simulation for testing setup (default False).
         prepped_simulation: Cached prepared simulation objects after prep().
         additional_keys: Additional k-Wave output keys to record (e.g., ['p_max']).
@@ -277,6 +280,7 @@ class Simulation:
         gpu=True,
         dry=False,
         additional_keys=[],
+        num_threads=4,
     ):
         self.sim_properties = sim_properties
         self.phantom = phantom
@@ -285,6 +289,7 @@ class Simulation:
         self.simulation_path = simulation_path
         self.index = index
         self.gpu = gpu
+        self.num_threads = num_threads
         self.dry = dry
         self.prepped_simulation = None
         self.additional_keys = additional_keys
@@ -514,7 +519,7 @@ class Simulation:
                 simulation_options=simulation_options,
                 # execution_options=kwave.options.simulation_execution_options.SimulationExecutionOptions(
                 execution_options=kwave.options.SimulationExecutionOptions(
-                    is_gpu_simulation=self.gpu, show_sim_log=False
+                    is_gpu_simulation=self.gpu, show_sim_log=False, num_threads=self.num_threads
                 ),
             )
 
