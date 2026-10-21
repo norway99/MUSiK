@@ -63,7 +63,9 @@ def build_experiment(frame: int, poses: np.ndarray, config: dict, paths: Paths) 
         transducer_set=probes,
         sensor=sensor.Sensor(transducer_set=probes, aperture_type="transmit_as_receive"),
         nodes=config["simulation"]["nodes"],
-        workers=config["simulation"]["workers"],
+        prep_workers=config["simulation"]["prep_workers"],
+        sim_workers=config["simulation"]["sim_workers"],
+        gpus=config["simulation"]["gpus"],
         additional_keys=[],
     )
 

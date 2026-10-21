@@ -1,6 +1,6 @@
 """Run the simulations for one or more cardiac-phase experiments.
 
-    python 04_run.py --frames 0 1 2 [--node 0] [--workers 3]
+    python 04_run.py --frames 0 1 2 [--node 0] [--prep-workers 1] [--sim-workers 3] [--gpus 0 1]
 
 Under a Slurm array, leave out `--frames` and each task runs the phase equal to
 `SLURM_ARRAY_TASK_ID`. Within a phase, `--node` splits the work further using MUSiK's
@@ -20,7 +20,9 @@ def main():
     parser.add_argument("--config", default=None)
     parser.add_argument("--frames", type=int, nargs="*", default=None)
     parser.add_argument("--node", type=int, default=None)
-    parser.add_argument("--workers", type=int, default=None)
+    parser.add_argument("--prep-workers", type=int, default=None, help="default: config")
+    parser.add_argument("--sim-workers", type=int, default=None, help="simulations per GPU (default: config)")
+    parser.add_argument("--gpus", type=int, nargs="*", default=None, help="device indices (default: config)")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -39,7 +41,14 @@ def main():
             continue
         loaded = experiment.Experiment.load(str(path))
         print(f"phase {frame:02d}: {len(loaded.indices_to_run())} of {len(loaded)} simulations remaining")
-        loaded.run(node=args.node, workers=args.workers)
+        # Settings come from the config, not the saved experiment, so they can change between runs.
+        sim = config["simulation"]
+        loaded.run(
+            node=args.node,
+            prep_workers=args.prep_workers or sim["prep_workers"],
+            sim_workers=args.sim_workers or sim["sim_workers"],
+            gpus=args.gpus or sim["gpus"],
+        )
 
 
 if __name__ == "__main__":
