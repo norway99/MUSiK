@@ -49,6 +49,51 @@ def test_focused_ray_transforms_cover_requested_2d_sweep():
     )
 
 
+@pytest.mark.parametrize("sweep", [0.3, np.pi / 2, np.pi])
+def test_single_ray_points_straight_ahead_for_any_sweep(sweep):
+    transducer = Focused(sweep=sweep, ray_num=1)
+    heading = transducer.ray_transforms[0].apply_to_point([1, 0, 0])
+
+    np.testing.assert_allclose(heading, [1, 0, 0], atol=1e-9)
+
+
+def test_single_ray_3d_dimension_is_unsteered():
+    transducer = Focused(imaging_ndims=3, sweep=np.array([0.4, 0.6]), ray_num=np.array([3, 1]))
+    yaws, pitches = transducer.make_ray_transforms(3, transducer.sweep, transducer.ray_num)[1:]
+
+    np.testing.assert_allclose(yaws, [-0.2, 0, 0.2])
+    np.testing.assert_allclose(pitches, [0])
+
+
+def _scan_line(delays, apodization="Rectangular"):
+    from types import SimpleNamespace
+
+    import kwave
+
+    transducer = Focused(elements=len(delays), receive_apodization=apodization)
+    transducer.not_transducer = SimpleNamespace(
+        active_elements=np.arange(len(delays)), beamforming_delays=-np.asarray(delays)
+    )
+    data = np.zeros((len(delays), 12))
+    for element, delay in enumerate(delays):
+        data[element, 5 + delay] = 1.0  # echo arriving `delay` samples late on this element
+    weights = np.ravel(kwave.utils.signals.get_win(len(delays), type_=apodization)[0])
+    return transducer.make_scan_line(data, transmit_as_receive=True), weights
+
+
+def test_scan_line_aligns_each_element_by_exactly_its_delay():
+    line, _ = _scan_line([2, 1, 0, 1, 2])
+
+    np.testing.assert_allclose(line, np.eye(12)[5] * 5)
+
+
+def test_scan_line_applies_apodization_to_every_element():
+    line, weights = _scan_line([0, 0, 0, 0, 0], apodization="Hanning")
+
+    assert line[5] == pytest.approx(weights.sum())
+    assert weights.sum() < 5
+
+
 def test_focused_3d_ray_count_is_product_of_dimensions():
     transducer = Focused(
         imaging_ndims=3,

@@ -9,6 +9,13 @@ import kwave.ktransducer
 from scipy.signal import hilbert
 
 
+def _sweep_angles(sweep, ray_num):
+    """Evenly spaced ray angles across `sweep`, centered on 0; a single ray points straight ahead."""
+    if ray_num == 1:
+        return np.zeros(1)
+    return np.linspace(-sweep / 2, sweep / 2, ray_num)
+
+
 class Transducer:
     """
     A class to represent a transducer object. This class is used to create a transducer object that can be used in a simulation.
@@ -206,24 +213,13 @@ class Transducer:
             ndarray: The pitch angles.
         """
         if imaging_ndims == 2:
-            if ray_num == 1:
-                coeff = -1
-            else:
-                coeff = 2
-            yaws = np.linspace(-sweep / coeff, sweep / coeff, ray_num)
+            yaws = _sweep_angles(sweep, ray_num)
             pitches = np.zeros(ray_num)
             rays = [geometry.Transform(rotation=(yaw, 0, 0)) for yaw in yaws]
         else:
             if self.balance_3D:
-                coeff = np.where(ray_num == 1, -1, 2)
-                # xs = np.linspace(-sweep[0]/coeff[0], sweep[0]/coeff[0], ray_num[0])
-                # ys = np.linspace(-sweep[1]/coeff[1], sweep[1]/coeff[1], ray_num[1])
-                xs = np.arctan(
-                    np.linspace(-sweep[0] / coeff[0], sweep[0] / coeff[0], ray_num[0])
-                )
-                ys = np.arctan(
-                    np.linspace(-sweep[1] / coeff[1], sweep[0] / coeff[1], ray_num[1])
-                )
+                xs = np.arctan(_sweep_angles(sweep[0], ray_num[0]))
+                ys = np.arctan(_sweep_angles(sweep[1], ray_num[1]))
 
                 rays = [
                     geometry.Transform(
@@ -236,13 +232,8 @@ class Transducer:
                 yaws = np.sqrt(xs**2 + ys**2)
                 pitches = np.sqrt(xs**2 + ys**2)
             else:
-                coeff = np.where(ray_num == 1, -1, 2)
-                yaws = np.linspace(
-                    -sweep[0] / coeff[0], sweep[0] / coeff[0], ray_num[0]
-                )
-                pitches = np.linspace(
-                    -sweep[1] / coeff[1], sweep[1] / coeff[1], ray_num[1]
-                )
+                yaws = _sweep_angles(sweep[0], ray_num[0])
+                pitches = _sweep_angles(sweep[1], ray_num[1])
                 rays = [
                     geometry.Transform(rotation=(yaw, pitch, 0))
                     for yaw in yaws
@@ -634,27 +625,19 @@ class Focused(Transducer):
         apodization = np.array(apodization)
 
         # offset the received sensor_data by the beamforming delays and apply receive apodization
+        weights = np.broadcast_to(np.ravel(apodization), (num_element_signals,))
         for element_index in range(num_element_signals):
-            if delays[element_index] > 0:
+            delay = int(delays[element_index])
+            shifted = np.zeros_like(sensor_data[element_index])
+            if delay > 0:
                 # shift element data forwards
-                sensor_data[element_index, :-1] = apodization[
-                    element_index
-                ] * np.concatenate(
-                    (
-                        sensor_data[element_index, 1 + delays[element_index] :],
-                        np.zeros(delays[element_index]),
-                    )
-                )
-            elif delays[element_index] < 0:
+                shifted[:-delay] = sensor_data[element_index, delay:]
+            elif delay < 0:
                 # shift element data backwards
-                sensor_data[element_index, :-1] = apodization[
-                    element_index
-                ] * np.concatenate(
-                    (
-                        np.zeros(-delays[element_index]),
-                        sensor_data[element_index, : -delays[element_index]],
-                    )
-                )
+                shifted[-delay:] = sensor_data[element_index, :delay]
+            else:
+                shifted[:] = sensor_data[element_index]
+            sensor_data[element_index] = weights[element_index] * shifted
 
         # form the a-line summing across the elements
         line = np.sum(sensor_data, axis=0)

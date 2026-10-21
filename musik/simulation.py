@@ -492,6 +492,7 @@ class Simulation:
             simulation_options = kwave.options.simulation_options.SimulationOptions(
                 pml_inside=False,
                 pml_size=pml_size_points,
+                pml_alpha=self.sim_properties.PML_alpha,
                 data_cast="single",
                 data_recast=True,
                 save_to_disk=True,  # This is broken in the current version of k-Wave, so we save to disk and manually delete to free memory
