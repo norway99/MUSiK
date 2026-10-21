@@ -394,7 +394,8 @@ class Experiment:
         count = 0
         while True:
             if queue.qsize() >= num_prep_workers and not dry:
-                time.sleep(5)
+                # Poll briefly: a long sleep here leaves a fast GPU idle between simulations.
+                time.sleep(0.2)
                 if time.time() - start > 300:
                     print(
                         f"prep worker has been inactive for {(time.time() - start) // 60} minutes"
