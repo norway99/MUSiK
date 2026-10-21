@@ -33,13 +33,14 @@ default_tissue: soft                            # everything unlabelled: the mas
 
 phantom:
   voxel_size_mm: 0.5                            # TODO: phantom resampling resolution
-  # Background kept around the labelled region on every side. It must enclose every probe
-  # position, so it follows the sweep design. Size grows quickly: see plan.md.
-  margin_mm: 50                                 # TODO
+  # Background kept around the labelled region on every side. Lookups past the grid clamp
+  # to edge labels, so this only has to keep the edges background; probes may sit outside.
+  margin_mm: 10
   seed: 1
-  # Bake the speckle field once per cardiac frame so every scan line samples the same
-  # world-space scatterers. Otherwise MUSiK draws fresh speckle for every simulation.
-  bake_speckle: true
+  # Generate texture on each simulation grid as a hash of world position, so every scan
+  # line, image and cardiac phase sees the same scatterers. Otherwise MUSiK draws fresh
+  # speckle for every simulation. Needs `seed`.
+  world_texture: true
 
 cardiac:
   num_frames: 20

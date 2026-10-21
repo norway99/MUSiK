@@ -36,7 +36,9 @@ def main():
         spacing_m = np.array(json.load(handle)["mask_spacing_m"])
     sector = create_sector(config)
 
-    picks = np.arange(0, len(trajectory["times_s"]), args.every)
+    with (paths.experiments / "image_index.json").open() as handle:
+        simulated = sorted(entry["image"] for entry in json.load(handle)["images"])
+    picks = simulated[:: args.every]
     figure, axes = plt.subplots(len(picks), 2, figsize=(6, 3 * len(picks)), squeeze=False)
     for (left, right), index in zip(axes, picks):
         frame = trajectory["cardiac_frame"][index]

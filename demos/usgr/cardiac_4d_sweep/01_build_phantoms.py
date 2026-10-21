@@ -4,12 +4,12 @@
 
 The raw mask is cropped to the union of all labels over the cycle plus
 `phantom.margin_mm` on every side (padding with background where that runs past the
-scan). The probe has to sit inside the grid: MUSiK clamps lookups at the edges, which
-replicates baked speckle into streaks. The cropped mask is cached as `phantoms/mask.npy`
-for the later scripts. Each frame is then resampled (nearest neighbour) to
-`phantom.voxel_size_mm`, labels are mapped to tissues, and the phantom is saved to
-`phantoms/frame_XX`. All frames share a seed. With `bake_speckle`, the property volume
-is generated once here, so every scan line in that phase samples the same scatterers.
+scan). MUSiK clamps label lookups at the grid edges, so the margin only has to keep the
+edges background; texture is generated per simulation at true world positions. The
+cropped mask is cached as `phantoms/mask.npy` for the later scripts. Each frame is then
+resampled (nearest neighbour) to `phantom.voxel_size_mm`, labels are mapped to tissues,
+and the phantom is saved to `phantoms/frame_XX`. All frames share a seed, so with
+`world_texture` every scan line, image and phase sees the same scatterers.
 """
 
 import argparse
@@ -64,17 +64,12 @@ def build_phantom(mask_frame: np.ndarray, config: dict, tissues: dict) -> phanto
         matrix_dims=labels.shape,
         baseline=(default.c, default.rho),
         seed=config["phantom"]["seed"],
+        world_texture=config["phantom"]["world_texture"],
     )
     for value, name in config["mask"]["labels"].items():
         result.add_tissue(tissues[name], mask=labels == int(value))
     # Anything left unlabeled (including mask values not in the label map) becomes the default.
     result.set_default_tissue(default)
-
-    if config["phantom"]["bake_speckle"]:
-        result.get_complete()
-        # With `from_mask` off, `interpolate_phantom` samples the baked volume instead of
-        # regenerating tissue for each simulation.
-        result.from_mask = False
     return result
 
 

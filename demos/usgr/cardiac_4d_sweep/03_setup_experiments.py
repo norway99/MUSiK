@@ -71,17 +71,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
     parser.add_argument("--frames", type=int, nargs="*", default=None)
+    parser.add_argument("--images", type=int, nargs="*", default=None, help="only these trajectory images (pilots)")
     args = parser.parse_args()
 
     config = load_config(args.config)
     paths = Paths(config)
     trajectory = load_trajectory(paths)
     ray_num = config["transducer"]["ray_num"]
+    selected = np.zeros(len(trajectory["times_s"]), dtype=bool)
+    selected[args.images if args.images else slice(None)] = True
 
     index = {"ray_num": ray_num, "images": []}
     frames = args.frames if args.frames else range(config["cardiac"]["num_frames"])
     for frame in frames:
-        images = np.flatnonzero(trajectory["cardiac_frame"] == frame)
+        images = np.flatnonzero((trajectory["cardiac_frame"] == frame) & selected)
         if len(images) == 0:
             print(f"phase {frame:02d}: no images, skipping")
             continue

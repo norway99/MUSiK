@@ -72,12 +72,14 @@ def scan_convert(polar: np.ndarray, sector, angles: np.ndarray, depths_m: np.nda
     return image
 
 
-def write_metadata(paths: Paths, config: dict, sector, trajectory: dict, valid: np.ndarray, extra: dict) -> None:
+def write_metadata(paths: Paths, config: dict, sector, trajectory: dict, valid: np.ndarray, images: list, extra: dict) -> None:
     """`sequence_metadata.json` in the v3.0 layout of `synthetic/generate.py:write_metadata`."""
     heart_hz = config["cardiac"]["heart_rate_bpm"] / 60.0
+    trajectory = {key: value[images] for key, value in trajectory.items()}
+    valid = valid[images]
     frames = [
         {
-            "image_path": f"images/{index:05d}.png",
+            "image_path": f"images/{image:05d}.png",
             "timestamp_ns": int(trajectory["times_s"][index] * 1e9),
             "microns_per_pixel": sector.microns_per_pixel,
             # TODO: raw tracker pose needs usgr's calibration (compute_tracker_from_transducer).
@@ -86,7 +88,7 @@ def write_metadata(paths: Paths, config: dict, sector, trajectory: dict, valid: 
             "ground_truth_transducer_pose": pose_matrix_to_12(trajectory["poses"][index]),
             "ground_truth_frequency_hz": heart_hz,
         }
-        for index in range(len(trajectory["times_s"]))
+        for index, image in enumerate(images)
     ]
     metadata = {
         "format_version": "3.0",
@@ -110,6 +112,7 @@ def write_metadata(paths: Paths, config: dict, sector, trajectory: dict, valid: 
         "time": {"cardiac_period_seconds": 1.0 / heart_hz},
         "generation": {
             "config": config,
+            "trajectory_index": list(images),
             "true_poses": [pose_matrix_to_12(p) for p in trajectory["poses"]],
             "cardiac_phase": trajectory["cardiac_phase"].tolist(),
             "cardiac_frame": trajectory["cardiac_frame"].tolist(),
@@ -158,14 +161,16 @@ def main():
     sector = create_sector(config)
     images_dir = paths.recording / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
-    for index in range(num_images):
+    # Only images that were set up (all of them, unless 03 was given --images).
+    images = sorted(entry["image"] for entry in image_index)
+    for index in images:
         decibels = 20.0 * np.log10(scan_convert(polar[index], sector, angles, depths_m) / reference + 1e-12)
         pixels = np.clip((decibels - floor_db) / -floor_db, 0.0, 1.0) * 255.0
         pixels[~sector.valid] = 0.0
         Image.fromarray(pixels.astype(np.uint8)).save(images_dir / f"{index:05d}.png")
 
-    write_metadata(paths, config, sector, trajectory, valid, {"log_reference": float(reference)})
-    print(f"wrote {num_images} images ({int(valid.sum())} valid) to {paths.recording}")
+    write_metadata(paths, config, sector, trajectory, valid, images, {"log_reference": float(reference)})
+    print(f"wrote {len(images)} images ({int(valid[images].sum())} valid) to {paths.recording}")
 
 
 if __name__ == "__main__":

@@ -22,23 +22,20 @@
 ## Phantom facts
 - Source: `assets/cardiac_4d_phantom/img4d_CT_bavcta021_baseline_seg4d.tif`, `(T=20, Z=585, Y=512, X=512)` uint8 at 0.4 × 0.396 × 0.396 mm. Axes are (inferior, posterior, patient-left), right-handed, and kept in file order.
 - Labels: LV/RV myocardium and LA/RA walls → `myocardium`; four chamber blood pools plus aorta and PA → `blood`; label 0 → `soft`. There's no chest wall, lungs, valves or vessel walls. Frame 0 ≈ end-diastole, frames 7–8 ≈ end-systole.
-- Crop at 50 mm margin: 682 × 596 × 634 voxels (273 × 236 × 251 mm), 5.2 GB cached for all 20 frames. That's about 129M voxels per frame at 0.5 mm phantom resolution.
+- Crop: union of labels over the cycle plus a 10 mm background margin. Lookups past the grid clamp to background and texture is generated at true world positions, so probes may sit outside the phantom.
 - LV long axis (base → apex) ≈ (0.19, −0.74, 0.64) in (Z, Y, X), i.e. anterior, leftward and slightly inferior, 94 mm long.
 
 ## Open questions / decisions
 
 **Phantom / tissue**
-- Tissue values (c / rho / sigma / scale). For sub-voxel `scale` (all our tissues), the per-voxel sound-speed std is `sigma·√(scale / voxel)`, so effective brightness shifts with `phantom.voxel_size_mm`. At 0.5 mm the current values give myocardium 8.9, soft 4.5, blood 0.18 m/s. Should we tune `sigma` against those effective values, or set `scale` = voxel size so `sigma` is the std directly? (The clip at 1/mean(grid shape) only applies below scale/voxel ≈ 0.002, so it's inactive for us.)
-- Phantom voxel size vs. sim voxel size. The sim samples the phantom with nearest-neighbour lookup, so scatterers are phantom-voxel-sized blocks. At 1 MHz (sim voxel 0.385 mm) a 0.5 mm phantom is slightly coarser than the grid. At 2 MHz it's 2.6× coarser. Should phantom voxel ≤ sim voxel, at the cost of size?
-- Wall layers for the aorta/PA, and a synthetic body wall between probe and heart. Both are optional realism.
-- Storage: 1 GB per baked frame at 0.5 mm (float32), and each phase experiment saves its own copy, so ≈ 40 GB total. Should experiments symlink the phantom instead?
+- Tissue values (c / rho / sigma / scale): tune from the first sample images. Current relative speckle levels are myocardium +6 dB and blood −28 dB vs. soft. These ratios don't depend on voxel size; boundary (specular) echoes vs. speckle and the noise floor do.
+- Phantom voxel size: with per-simulation texture it only sets boundary geometry (scatterers are always sim-voxel-sized, λ/4). 0.5 mm matches the mask's native 0.4 mm and keeps boundary staircasing well under λ at 1 MHz. The λ/2 block effect only applied to baking, which we dropped.
 
 **Simulation / transducer**
-- Center frequency: the main cost knob and our only lever on sim voxel size (a quarter wavelength).
+- Center frequency: the main cost knob. It sets the sim voxel (λ/4) and therefore scatterer size; phantoms don't need rebuilding when it changes.
 - Grid size (depth × lateral × elevation), PML, and attenuation. At 1 MHz the current config gives 512 × 128 × 64 voxels per line (inner 185 × 43 × 18 mm). MUSiK widens lateral/elevation to 1.5× the aperture and rounds sizes up to FFT-friendly ones. Settle on the smallest grid that still gives clean lines.
 - Elements, aperture, focus, cycles; lines per image (32?) and FOV (32 lines over 75° ≈ 2.4° per line).
 - GPU access: both local GPUs are currently busy. Benchmark time per line on whatever we'll actually use → total GPU-hours.
-- Far edge: any part of a beam's grid outside the phantom gets edge-clamped values (streaky baked speckle). `margin_mm` should cover probe positions *and* imaging depth along each beam. 02 can check this per pose.
 
 **Sweep / timing**
 - Real segment definitions: which views (parasternal-like, apical-like, subcostal-like?), probe standoff, sweep extents. The current three segments are placeholders.
@@ -56,14 +53,19 @@
 ## Decisions made
 - 4D via per-phase experiments; no core 4D support for now.
 - Frequency is the only voxel-size lever (`grid_lambda` not exposed).
-- Speckle is baked once per frame. All frames share a seed, so the speckle field is fixed in world space.
+- No baking. Texture is generated per simulation on the sim grid with `Phantom.world_texture`: each voxel's noise is a hash of (seed, tissue, world lattice cell). Scatterers are therefore fixed in world space across lines, images and cardiac phases (but don't move with the tissue).
+- Per-simulation random streams: each simulation draws from `Phantom.simulation_rng(index)`, derived from (seed, index). Previously, forked prep workers shared identical copies of `phantom.rng`, so with `workers > 2` paired lines got identical noise.
+- The texture exponent stays at 1/2 for now, with a comment in `Phantom.__texture_parameters` explaining the discrepancy and its effects.
+- `Simulation` no longer calls `phantom.get_complete()` on every line. It built property maps for the whole phantom and threw them away: 393 s per worker on our phantom, versus 0.6 s for the actual per-line prep. The run worker's "inactive" message now prints once per 5 minutes instead of every second.
 - `Phantom.interpolate_phantom` uses a direct rounded-index lookup (equivalent to the old nearest-neighbour interpolator, about 1500× faster per line).
 - `Phantom.make_complete` generates each tissue's texture only over its own voxels. It uses the same texture model and parameters, and the identical interpolation geometry (bit-identical for the same noise), but draws different random numbers. It's ~100–300× faster and outputs float32 (was accidentally float64). Labels with no tissue now get the default tissue instead of the label number as a sound speed. This also speeds up MUSiK's default per-line (non-baked) mode.
 - Phantom → sim-grid sampling verified on frame 0: labels along all 32 rays of a real pose match the planned image plane (98.9% mean agreement, differences only at boundaries from the 0.4 / 0.5 / 0.385 mm grids). A mirrored lateral sign drops agreement to 81%, so orientation and lateral sign are correct.
 - Label → tissue map as above.
+- No added anatomy (vessel walls, body wall) for now; revisit after the first sample images.
+- Storage is fine to allocate. Without baking, each frame is just a label mask (~1 MB compressed on disk).
 
 ## Next steps
 1. Simulate one line (or one image) to confirm the k-Wave run and reconstruction path. Needs GPU time; both local GPUs are currently in use.
-2. Settle tissue values, phantom voxel size, and margin.
+2. Settle tissue values from the first sample images.
 3. Design sweeps against the real label previews (02).
 4. Benchmark one phase on GPU → fix sim parameters → run 05 + 06 → scale out with 04.
