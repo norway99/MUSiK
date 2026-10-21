@@ -448,8 +448,9 @@ class Experiment:
                 time.sleep(1)
                 if time.time() - start > 300:
                     print(
-                        f"prep worker has been inactive for {(time.time() - start) // 60} minutes"
+                        f"run worker has waited {(time.time() - start) // 60} minutes for a prepared simulation"
                     )
+                    start = time.time()
                 continue
             if simulation == SENTINEL:
                 seen_sentinel_count += 1

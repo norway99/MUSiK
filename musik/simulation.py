@@ -328,7 +328,6 @@ class Simulation:
         ):
             if index - transducer.get_num_rays() < 0:
                 steering_angle = transducer.steering_angles[index]
-                sim_phantom = self.phantom.get_complete()
                 sim_sensor = self.sensor
 
                 if not dry:
