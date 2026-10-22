@@ -172,3 +172,21 @@ refine_views:
     subcostal_lv: {accept: 0}
     right_parasternal_ascending_aorta: {accept: 0}
     parasternal_rv_inflow: {accept: 0}
+
+# Final novel-view test frames (10_test_frames.py): sample indices in `source` (round 6, where
+# every view but PLAX was carried over as sample 0).
+test_set:
+  source: canonical_views_round6
+  frame_interval_s: 1.0                         # test timestamps after the last training frame, as in generate.py
+  picks:
+    psax_aortic_valve: 0
+    psax_mitral_valve: 0
+    psax_mid_ventricular: 0
+    plax: 34
+    parasternal_rv_inflow: 0
+    apical_4_chamber: 0
+    apical_5_chamber: 0
+    apical_3_chamber: 0
+    apical_2_chamber: 0
+    subcostal_lv: 0
+    right_parasternal_ascending_aorta: 0
