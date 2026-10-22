@@ -61,6 +61,7 @@ from ...recording.data_access.load_sequence import (  # noqa: E402
     load_sequence,
 )
 from ...recording.data_access.metadata_schema import (  # noqa: E402
+    CURRENT_FORMAT_VERSION,
     CalibrationReference,
     FrameMetadata,
     GeometryConfig,
@@ -192,6 +193,59 @@ class DeformationConfig:
 
 
 @dataclass(frozen=True)
+class PerturbedTestConfig:
+    """Test frames (metadata v5.0) appended after the recording at a prescribed offset.
+
+    Each test frame picks a random training frame and moves its imaging frame by exactly
+    `rotation_deg` about a random probe-local axis through the frame's centre (the
+    centroid of the sector's pixels), then `translation_mm` along a random probe-local
+    direction: `x' = R (x - c) + c + d`. Pivoting at the image centre rather than the
+    probe origin keeps large offsets inside the sampled field of view, so how far test
+    views sit from the training data is controlled rather than left to the trajectory.
+
+    The raw pose carries the base frame's tracking error (`raw_b @ inv(true_b)`, applied
+    on the left), the phase is uniform, and timestamps continue after the last frame. The
+    training frames, their tracking error and images are exactly those of the same seed
+    without test frames.
+    """
+
+    count: int = 0
+    rotation_deg: float = 30.0
+    translation_mm: float = 25.0
+
+    def validate(self) -> None:
+        if self.count < 0 or self.rotation_deg < 0 or self.translation_mm < 0:
+            raise ValueError("perturbed_test count and magnitudes must be non-negative")
+
+
+# Spacing of appended test-frame timestamps after the last training frame.
+TEST_FRAME_INTERVAL_SECONDS = 1.0
+
+
+def image_center(sector: "Sector") -> np.ndarray:
+    """Probe-local centroid of the sector's pixels, metres: the centre of the imaging frame."""
+    return sector.local_points[sector.valid].astype(np.float64).mean(axis=0)
+
+
+def perturbed_test_frames(
+    config: PerturbedTestConfig,
+    true_poses: np.ndarray,
+    rng: np.random.Generator,
+    pivot: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Base training-frame indices and `[K, 4, 4]` true test poses, rotated about `pivot`."""
+    base = rng.choice(len(true_poses), size=config.count, replace=True)
+    axes = random_unit_vectors(rng, config.count)
+    directions = random_unit_vectors(rng, config.count)
+    rotations = Rotation.from_rotvec(axes * math.radians(config.rotation_deg)).as_matrix()
+    offsets = np.tile(np.eye(4), (config.count, 1, 1))
+    offsets[:, :3, :3] = rotations
+    # x' = R (x - c) + c + d, in probe-local coordinates.
+    offsets[:, :3, 3] = pivot - rotations @ pivot + directions * config.translation_mm * 1e-3
+    return base, true_poses[base] @ offsets
+
+
+@dataclass(frozen=True)
 class SyntheticConfig:
     """Every generation parameter."""
 
@@ -212,6 +266,7 @@ class SyntheticConfig:
     appearance: AppearanceConfig = field(default_factory=AppearanceConfig)
     pose_error: PoseErrorConfig = field(default_factory=PoseErrorConfig)
     deformation: DeformationConfig = field(default_factory=DeformationConfig)
+    perturbed_test: PerturbedTestConfig = field(default_factory=PerturbedTestConfig)
 
 
 # Component phase offsets that decorrelate an ellipsoid's translation, dilation
@@ -1238,11 +1293,18 @@ def write_metadata(
     true_poses_12: np.ndarray,
     raw_poses_12: np.ndarray,
     frequencies_hz: np.ndarray,
+    phases_rad: np.ndarray,
+    num_train: int,
+    raw_tracker_poses: np.ndarray,
     phantom: Phantom,
     pose_error: PoseError,
     extra: dict,
 ) -> None:
-    """Write `sequence_metadata.json` in the v3.0 format the dataset loader reads."""
+    """Write `sequence_metadata.json` (v5.0) with per-frame ground truth.
+
+    `phases_rad` is the wrapped phase each image was rendered at, so evaluation scores
+    against the phase that formed the image rather than re-integrating frequency.
+    """
     frames = [
         FrameMetadata(
             image_path=f"images/{index:05d}.png",
@@ -1250,16 +1312,19 @@ def write_metadata(
             microns_per_pixel=sector.microns_per_pixel,
             # Stored in raw tracker space so synthetic and in-vivo recordings load
             # through the same forward calibration.
-            raw_tracker_pose=pose_matrix_to_12(pose_error.raw_poses[index]),
+            raw_tracker_pose=pose_matrix_to_12(raw_tracker_poses[index]),
             valid=True,
+            # Appended perturbed test frames follow the training frames.
+            split="test" if index >= num_train else "train",
             ground_truth_transducer_pose=list(true_poses_12[index]),
             ground_truth_frequency_hz=float(frequencies_hz[index]),
+            ground_truth_phase_radians=float(phases_rad[index]),
         )
         for index in range(len(true_poses_12))
     ]
     mean_frequency = float(np.mean(frequencies_hz))
     metadata = SequenceMetadataV3(
-        format_version="3.0",
+        format_version=CURRENT_FORMAT_VERSION,
         sequence_type="synthetic",
         frames=frames,
         geometry={
@@ -1321,6 +1386,7 @@ def write_metadata(
 def generate(config: SyntheticConfig) -> None:
     """Render a synthetic recording and write it to `config.output_dir`."""
     config.pose_error.validate()
+    config.perturbed_test.validate()
     if config.invivo_trajectory_dir is None and (config.num_frames < 1 or not np.isfinite(config.trajectory.frame_rate_hz) or config.trajectory.frame_rate_hz <= 0):
         raise ValueError("generated trajectories need positive num_frames and frame_rate_hz")
     output_path = Path(config.output_dir)
@@ -1355,6 +1421,7 @@ def generate(config: SyntheticConfig) -> None:
         frame_times = np.arange(config.num_frames, dtype=np.float64) / config.trajectory.frame_rate_hz
         true_poses = generate_trajectory(frame_times, config.trajectory, trajectory_rng)
     validate_trajectory(true_poses, frame_times)
+    num_train = len(true_poses)
     translation_speed, rotation_speed = measure_speeds(true_poses, frame_times)
     print(
         f"Trajectory: {len(true_poses)} poses, peak {translation_speed:.4f} m/s "
@@ -1385,6 +1452,50 @@ def generate(config: SyntheticConfig) -> None:
         for pose in pose_error.raw_poses
     ])
     error_diagnostics = save_diagnostics(output_path, frame_times, pose_error)
+    raw_tracker_poses = pose_error.raw_poses
+
+    # Appended test frames: built from training frames, after everything above is fixed,
+    # so the training recording is identical with or without them.
+    test_config = config.perturbed_test
+    test_metadata = {}
+    if test_config.count:
+        pivot = image_center(sector)
+        base, test_poses = perturbed_test_frames(
+            test_config, true_poses, named_rng(config.seed, "perturbed_test"), pivot
+        )
+        test_tracker = np.stack([
+            pose_12_to_matrix(compute_tracker_from_transducer(np.array(pose_matrix_to_12(pose)),
+                                                            calibration=DEFAULT_CALIBRATION,
+                                                            probe_element="phased"))
+            for pose in test_poses
+        ])
+        # The base frame's tracking error, as a world transform.
+        errors = raw_tracker_poses[base] @ np.linalg.inv(true_tracker[base])
+        test_raw_tracker = errors @ test_tracker
+        test_phases = named_rng(config.seed, "perturbed_test/phase").uniform(
+            -math.pi, math.pi, size=test_config.count
+        ).astype(phases.dtype)
+        test_times = frame_times[-1] + TEST_FRAME_INTERVAL_SECONDS * np.arange(1, test_config.count + 1)
+        frame_times = np.concatenate([frame_times, test_times])
+        true_poses = np.concatenate([true_poses, test_poses])
+        raw_tracker_poses = np.concatenate([raw_tracker_poses, test_raw_tracker])
+        raw_transducer = np.concatenate([raw_transducer, np.stack([
+            compute_transducer_from_tracker(np.array(pose_matrix_to_12(pose)),
+                                           calibration=DEFAULT_CALIBRATION, probe_element="phased")
+            for pose in test_raw_tracker
+        ])])
+        phases = np.concatenate([phases, test_phases])
+        frequencies_hz = np.concatenate([frequencies_hz, frequencies_hz[base]])
+        test_metadata = {"perturbed_test": {
+            "config": asdict(test_config),
+            "pivot_probe_local_m": pivot.tolist(),
+            "base_frames": base.tolist(),
+            "raw_pose": "base frame's tracking error raw_b @ inv(true_b), applied on the left",
+        }}
+        print(
+            f"Perturbed test frames: {test_config.count} at {test_config.rotation_deg} deg / "
+            f"{test_config.translation_mm} mm from training frames {base.tolist()}"
+        )
     error_stats = error_diagnostics["statistics"]
     print(f"Tracker error RMS: {error_stats['translation']['rms']:.3f} mm / "
           f"{error_stats['rotation']['rms']:.3f} degrees")
@@ -1498,6 +1609,9 @@ def generate(config: SyntheticConfig) -> None:
         true_poses_12=true_poses_12,
         raw_poses_12=raw_poses_12,
         frequencies_hz=frequencies_hz,
+        phases_rad=phases,
+        num_train=num_train,
+        raw_tracker_poses=raw_tracker_poses,
         phantom=phantom,
         pose_error=pose_error,
         extra={
@@ -1509,6 +1623,7 @@ def generate(config: SyntheticConfig) -> None:
             "evaluation_grid": evaluation_grid,
             "visualizations": visualizations,
             **deformation_metadata,
+            **test_metadata,
         },
     )
     print(f"\nWrote {len(true_poses)} frames and sequence_metadata.json to {output_path}")

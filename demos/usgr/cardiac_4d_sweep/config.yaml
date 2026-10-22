@@ -133,3 +133,42 @@ reconstruction:
   num_depth_samples: 1024                       # polar resampling before scan conversion
   dynamic_range_db: 50                          # TODO
   reference_percentile: 99.5                    # one global log-compression reference for the whole sweep
+
+# Novel-view test frames (07_test_candidates.py): perturbations of training poses as in
+# synthetic/generate.py:perturbed_test_frames, rotated about the image centre.
+test_frames:
+  candidates: 50
+  rotation_deg: [0, 90]                         # fixed angle, or [min, max] sampled uniformly per candidate
+  translation_mm: 15
+  seed: 7
+
+# Canonical TTE view candidates (08_canonical_views.py): a best-guess pose per view from the
+# sweep's windows and mask landmarks, plus small random perturbations around it.
+canonical_views:
+  samples_per_view: 10                          # sample 0 is the unperturbed best guess
+  rotation_max_deg: 10
+  translation_max_mm: 5
+  psax_mid_fraction: 0.4                        # mid-ventricular level: fraction of the way mitral valve -> apex
+  a5c_tilt_deg: 15
+  right_parasternal_shift_mm: 50
+  seed: 11
+
+# Refinement round for canonical views (09_refine_views.py). `accept: k` keeps sample k of
+# the source round; `from: k` resamples around it (see the script for the adjustments).
+refine_views:
+  source: canonical_views_round5
+  output: canonical_views_round6
+  samples: 10
+  seed: 29
+  views:
+    psax_aortic_valve: {accept: 0}
+    psax_mitral_valve: {accept: 0}
+    psax_mid_ventricular: {accept: 0}
+    plax: {from: 4, grid: {count: 40, yaw_deg: 10, pitch_deg: 10, roll_deg: 10, lateral_mm: 10, elevation_mm: 10}}
+    apical_4_chamber: {accept: 0}
+    apical_5_chamber: {accept: 0}
+    apical_3_chamber: {accept: 0}
+    apical_2_chamber: {accept: 0}
+    subcostal_lv: {accept: 0}
+    right_parasternal_ascending_aorta: {accept: 0}
+    parasternal_rv_inflow: {accept: 0}
