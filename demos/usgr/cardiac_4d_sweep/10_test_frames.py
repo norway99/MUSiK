@@ -4,12 +4,21 @@
     python 10_test_frames.py setup         # one experiment per CT frame -> test_experiments/
     python 10_test_frames.py run           # simulate (settings from `simulation`)
     python 10_test_frames.py reconstruct   # -> recording_test/ (images, metadata, QA panel)
+    python 10_test_frames.py merge         # training + test -> recording_combined/ (metadata v5.0)
 
 The training experiments and recording are untouched. Reconstruction uses the training
 recording's log-compression reference, so test and training brightness are comparable.
 Test timestamps continue after the last training frame at `frame_interval_s`, as in
 `synthetic/generate.py`; each frame keeps the cardiac phase it was chosen at.
+
+`merge` writes one recording in the layout of `synthetic/generate.py:write_metadata` (v5.0):
+the training frames, then the test frames appended; every frame carries `split`
+("train" / "test") and `ground_truth_phase_radians`. Images are hard-linked, not copied.
 """
+
+import math
+from pathlib import Path
+import os
 
 import argparse
 import importlib
@@ -146,13 +155,73 @@ def reconstruct(config: dict) -> None:
     print(f"wrote {count} test images ({int(valid.sum())} valid) to {paths.recording}")
 
 
+def phase_radians(cycle_fraction) -> list[float]:
+    """Cardiac phase as a fraction of the cycle -> radians wrapped to (-pi, pi]."""
+    return [float(math.remainder(2 * math.pi * f, 2 * math.pi)) or 0.0 for f in cycle_fraction]
+
+
+def merge(config: dict) -> None:
+    root = Paths(config).root
+    train_dir, test_dir, out = root / "recording", root / "recording_test", root / "recording_combined"
+    train = json.load(open(train_dir / "sequence_metadata.json"))
+    test = json.load(open(test_dir / "sequence_metadata.json"))
+    num_train, num_test = len(train["frames"]), len(test["frames"])
+    assert train["geometry"] == test["geometry"], "train and test geometry differ"
+    assert train["generation"]["log_reference"] == test["generation"]["log_reference"], "brightness references differ"
+
+    (out / "images").mkdir(parents=True, exist_ok=True)
+
+    def link(source: Path, target: Path) -> None:
+        if target.exists():
+            target.unlink()
+        try:
+            os.link(source, target)
+        except OSError:
+            target.write_bytes(source.read_bytes())
+
+    train_generation, test_generation = train["generation"], test["generation"]
+    frames = []
+    for split, metadata, offset in (("train", train, 0), ("test", test, num_train)):
+        phases = phase_radians(metadata["generation"]["cardiac_phase"])
+        for index, frame in enumerate(metadata["frames"]):
+            image_path = f"images/{offset + index:05d}.png"
+            link((train_dir if split == "train" else test_dir) / frame["image_path"], out / image_path)
+            frames.append({**frame, "image_path": image_path, "split": split, "ground_truth_phase_radians": phases[index]})
+    np.save(out / "polar.npy", np.concatenate([np.load(train_dir / "polar.npy"), np.load(test_dir / "polar.npy")]))
+
+    generation = {
+        **train_generation,
+        "num_train": num_train,
+        "true_poses": train_generation["true_poses"] + test_generation["true_poses"],
+        "cardiac_phase": train_generation["cardiac_phase"] + test_generation["cardiac_phase"],
+        "cardiac_frame": train_generation["cardiac_frame"] + test_generation["cardiac_frame"],
+        "section": train_generation["section"] + [-1] * num_test,  # -1: appended test frame
+        "trajectory_index": train_generation["trajectory_index"] + [None] * num_test,
+        "test_frames": {
+            "first_index": num_train,
+            "views": test_generation["test_views"],
+            "selection": test_generation["selection"],
+            "source": "10_test_frames.py: canonical TTE views, simulated with the training settings",
+        },
+    }
+    metadata = {
+        **train,
+        "format_version": "5.0",
+        "frames": frames,
+        "source": {**train["source"], "num_frames": len(frames)},
+        "generation": generation,
+    }
+    save_json(metadata, out / "sequence_metadata.json")
+    print(f"wrote {len(frames)} frames ({num_train} train + {num_test} test) to {out}")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("step", choices=["select", "setup", "run", "reconstruct"])
+    parser.add_argument("step", choices=["select", "setup", "run", "reconstruct", "merge"])
     parser.add_argument("--config", default=None)
     args = parser.parse_args()
     config = load_config(args.config)
-    {"select": select, "setup": setup, "run": run, "reconstruct": reconstruct}[args.step](config)
+    {"select": select, "setup": setup, "run": run, "reconstruct": reconstruct, "merge": merge}[args.step](config)
 
 
 if __name__ == "__main__":
